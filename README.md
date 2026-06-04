@@ -1,8 +1,16 @@
 # BusyWork
 
-A Rust library that replaces `sleep()` with real, varied work. Every call executes a **completely different code path** — random category, random task, random iteration counts. Breaks static and dynamic analysis pattern matching.
+A Rust library that replaces `sleep()` with real, varied work to **evade behavioral pattern matching** by EDR, anti-cheat, and dynamic analysis systems.
 
-**Zero time objects** in the library binary. No `Duration`, no `Instant`, no `SystemTime`. Intensity levels control work volume through hardcoded iteration counts, buffer sizes, and call depths.
+Every call executes a **completely different code path** — random category, random task, random iteration counts. No two calls produce the same syscall sequence, instruction trace, or API call pattern.
+
+## Why
+
+`sleep()` is one of the most commonly hooked and monitored functions. EDR and anti-cheat systems flag predictable idle-then-act patterns as suspicious. Even if `sleep()` itself isn't hooked, the behavioral signature of "do X, idle N ms, do X again" is trivial to fingerprint.
+
+BusyWork fills those gaps with **genuine, varied activity** — real syscalls, real computations, real I/O — that looks like normal application behavior under dynamic analysis. The execution profile changes on every call, defeating both signature-based and heuristic-based detection.
+
+**Zero time objects** in the library binary. No `Duration`, no `Instant`, no `SystemTime`. Nothing for static analysis to latch onto as a timing mechanism.
 
 ## Usage
 
@@ -117,14 +125,34 @@ busywork = { version = "0.1", default-features = false, features = ["cat-compute
 | `cat-network`    | —                  | DNS, HTTP, NTP               |
 | `cat-crypto`     | windows            | Windows CNG (BCrypt) crypto  |
 
-## Design
+## Anti-Detection Design
 
-- **Every call is unique** — random category selection, random task within category, random iteration counts
-- **No deterministic signature** — even at the same intensity, call A and call B look nothing alike
-- **Task registry rebuilt per call** — no stable global pointer, prevents devirtualization
-- **Function pointers, not trait objects** — diverse call targets, no vtable pattern
-- **`black_box` on all results** — prevents dead-code elimination
-- **Windows-only** — full Win32 API access, no cross-platform abstraction layer
+Every design decision optimizes for evasion:
+
+| Technique | What it defeats |
+|-----------|----------------|
+| **Random task selection per call** | Behavioral sequence matching — no two calls produce the same API call order |
+| **±30% jitter on all parameters** | Timing heuristics — iteration counts, buffer sizes, call depths all vary |
+| **Task registry rebuilt per call** | Static analysis — no stable global function pointer table to fingerprint |
+| **Function pointers, not trait objects** | Vtable signature detection — each task is a direct call to a unique address |
+| **`black_box` on all results** | Dead-code elimination — compiler can't optimize away the work |
+| **No time objects in binary** | String/import scanning — `Duration`, `Instant`, `SystemTime` are absent |
+| **Real syscalls across categories** | Syscall sequence analysis — mixes NtReadFile, NtQueryKey, NtDeviceIoControl, etc. |
+| **Read-only filesystem/registry ops** | Behavioral red flags — no writes, no creates, no deletes |
+| **Legitimate API call targets** | API monitoring — calls the same APIs that normal applications use |
+
+### What it looks like under analysis
+
+A process calling `busywork(Medium)` in a loop produces traces like:
+
+```
+Call 1: RegOpenKeyEx → RegEnumKeyEx × 3 → RegCloseKey → SHA256 × 200 → ReadFile(hosts)
+Call 2: EnumWindows → GetWindowText × 15 → GlobalMemoryStatusEx → sort(50KB)
+Call 3: connect(httpbin.org:80) → send(GET) → recv → BCryptGenRandom × 8
+Call 4: FindFirstFile(*.dll) × 40 → GetVolumeInformation → memcpy(16KB) × 300
+```
+
+No repeating pattern. Each call exercises different subsystems, different buffer sizes, different iteration counts. To an EDR, it looks like a normal application doing normal things.
 
 ## Stats
 
