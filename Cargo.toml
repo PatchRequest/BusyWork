@@ -1,0 +1,49 @@
+[package]
+name = "busywork"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+bitflags = "2"
+sha2 = { version = "0.10", optional = true }
+md-5 = { version = "0.10", optional = true }
+flate2 = { version = "1", optional = true }
+
+[dependencies.windows]
+version = "0.58"
+optional = true
+
+[features]
+default = [
+    "cat-compute",
+    "cat-memory",
+    "cat-filesystem",
+    "cat-registry",
+    "cat-winapi",
+    "cat-network",
+    "cat-crypto",
+]
+cat-compute = ["dep:sha2", "dep:md-5", "dep:flate2"]
+cat-memory = []
+cat-filesystem = []
+cat-registry = [
+    "dep:windows",
+    "windows/Win32_System_Registry",
+    "windows/Win32_Foundation",
+]
+cat-winapi = [
+    "dep:windows",
+    "windows/Win32_UI_WindowsAndMessaging",
+    "windows/Win32_System_Diagnostics_ToolHelp",
+    "windows/Win32_System_SystemInformation",
+    "windows/Win32_System_DataExchange",
+    "windows/Win32_Foundation",
+    "windows/Win32_System_Threading",
+]
+cat-network = []
+cat-crypto = [
+    "dep:windows",
+    "windows/Win32_Security_Cryptography",
+    "windows/Win32_Foundation",
+]
