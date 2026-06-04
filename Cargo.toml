@@ -2,6 +2,12 @@
 name = "busywork"
 version = "0.1.0"
 edition = "2021"
+description = "Sleep replacement that executes real, varied work to break behavioral pattern matching"
+license = "MIT"
+repository = "https://github.com/PatchRequest/BusyWork"
+readme = "README.md"
+keywords = ["sleep", "evasion", "pattern-breaking", "winapi", "busywork"]
+categories = ["os::windows-apis"]
 
 [dependencies]
 rand = "0.8"

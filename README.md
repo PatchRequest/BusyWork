@@ -12,6 +12,22 @@ BusyWork fills those gaps with **genuine, varied activity** — real syscalls, r
 
 **Zero time objects** in the library binary. No `Duration`, no `Instant`, no `SystemTime`. Nothing for static analysis to latch onto as a timing mechanism.
 
+## Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+busywork = "0.1"
+```
+
+Or with only specific categories (faster compile, smaller binary):
+
+```toml
+[dependencies]
+busywork = { version = "0.1", default-features = false, features = ["cat-compute", "cat-memory", "cat-winapi"] }
+```
+
 ## Usage
 
 ```rust
