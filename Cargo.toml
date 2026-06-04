@@ -40,6 +40,9 @@ cat-winapi = [
     "windows/Win32_System_DataExchange",
     "windows/Win32_Foundation",
     "windows/Win32_System_Threading",
+    "windows/Win32_Storage_FileSystem",
+    "windows/Win32_System_Memory",
+    "windows/Win32_System_LibraryLoader",
 ]
 cat-network = []
 cat-crypto = [

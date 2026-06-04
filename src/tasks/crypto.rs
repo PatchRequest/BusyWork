@@ -17,6 +17,31 @@ pub fn register() -> Vec<TaskDescriptor> {
             category: Categories::CRYPTO,
             func: bcrypt_hash,
         },
+        TaskDescriptor {
+            name: "bcrypt_sha512",
+            category: Categories::CRYPTO,
+            func: bcrypt_sha512,
+        },
+        TaskDescriptor {
+            name: "bcrypt_md5_hash",
+            category: Categories::CRYPTO,
+            func: bcrypt_md5_hash,
+        },
+        TaskDescriptor {
+            name: "bcrypt_sha1_hash",
+            category: Categories::CRYPTO,
+            func: bcrypt_sha1_hash,
+        },
+        TaskDescriptor {
+            name: "bcrypt_aes_encrypt",
+            category: Categories::CRYPTO,
+            func: bcrypt_aes_encrypt,
+        },
+        TaskDescriptor {
+            name: "bcrypt_rng_algorithms",
+            category: Categories::CRYPTO,
+            func: bcrypt_rng_algorithms,
+        },
     ]
 }
 
@@ -69,5 +94,207 @@ fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng) {
         }
 
         let _ = BCryptCloseAlgorithmProvider(alg, 0);
+    }
+}
+
+fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng) {
+    let data_size = params.buffer_size.min(65536);
+    let mut data = vec![0u8; data_size];
+    rng.fill_bytes(&mut data);
+
+    unsafe {
+        let mut alg = BCRYPT_ALG_HANDLE::default();
+        let status = BCryptOpenAlgorithmProvider(
+            &mut alg,
+            windows::core::w!("SHA512"),
+            None,
+            BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
+        );
+        if status.0 != 0 {
+            return;
+        }
+
+        for _ in 0..params.iterations.min(100) {
+            let mut hash_handle = BCRYPT_HASH_HANDLE::default();
+            let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
+            if status.0 != 0 {
+                continue;
+            }
+
+            let _ = BCryptHashData(hash_handle, &data, 0);
+
+            let mut output = vec![0u8; 64]; // SHA-512 output
+            let _ = BCryptFinishHash(hash_handle, &mut output, 0);
+
+            black_box(&output);
+            let _ = BCryptDestroyHash(hash_handle);
+        }
+
+        let _ = BCryptCloseAlgorithmProvider(alg, 0);
+    }
+}
+
+fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng) {
+    let data_size = params.buffer_size.min(65536);
+    let mut data = vec![0u8; data_size];
+    rng.fill_bytes(&mut data);
+
+    unsafe {
+        let mut alg = BCRYPT_ALG_HANDLE::default();
+        let status = BCryptOpenAlgorithmProvider(
+            &mut alg,
+            windows::core::w!("MD5"),
+            None,
+            BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
+        );
+        if status.0 != 0 {
+            return;
+        }
+
+        for _ in 0..params.iterations.min(100) {
+            let mut hash_handle = BCRYPT_HASH_HANDLE::default();
+            let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
+            if status.0 != 0 {
+                continue;
+            }
+
+            let _ = BCryptHashData(hash_handle, &data, 0);
+
+            let mut output = vec![0u8; 16]; // MD5 output
+            let _ = BCryptFinishHash(hash_handle, &mut output, 0);
+
+            black_box(&output);
+            let _ = BCryptDestroyHash(hash_handle);
+        }
+
+        let _ = BCryptCloseAlgorithmProvider(alg, 0);
+    }
+}
+
+fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng) {
+    let data_size = params.buffer_size.min(65536);
+    let mut data = vec![0u8; data_size];
+    rng.fill_bytes(&mut data);
+
+    unsafe {
+        let mut alg = BCRYPT_ALG_HANDLE::default();
+        let status = BCryptOpenAlgorithmProvider(
+            &mut alg,
+            windows::core::w!("SHA1"),
+            None,
+            BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
+        );
+        if status.0 != 0 {
+            return;
+        }
+
+        for _ in 0..params.iterations.min(100) {
+            let mut hash_handle = BCRYPT_HASH_HANDLE::default();
+            let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
+            if status.0 != 0 {
+                continue;
+            }
+
+            let _ = BCryptHashData(hash_handle, &data, 0);
+
+            let mut output = vec![0u8; 20]; // SHA-1 output
+            let _ = BCryptFinishHash(hash_handle, &mut output, 0);
+
+            black_box(&output);
+            let _ = BCryptDestroyHash(hash_handle);
+        }
+
+        let _ = BCryptCloseAlgorithmProvider(alg, 0);
+    }
+}
+
+fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng) {
+    let plaintext_size = params.buffer_size.min(4096);
+    let mut plaintext = vec![0u8; plaintext_size];
+    rng.fill_bytes(&mut plaintext);
+
+    let mut key_bytes = [0u8; 32]; // AES-256 key
+    rng.fill_bytes(&mut key_bytes);
+
+    unsafe {
+        let mut alg = BCRYPT_ALG_HANDLE::default();
+        let status = BCryptOpenAlgorithmProvider(
+            &mut alg,
+            windows::core::w!("AES"),
+            None,
+            BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
+        );
+        if status.0 != 0 {
+            return;
+        }
+
+        for _ in 0..params.call_depth.min(50) {
+            let mut key_handle = BCRYPT_KEY_HANDLE::default();
+            let status = BCryptGenerateSymmetricKey(
+                alg,
+                &mut key_handle,
+                None,
+                &key_bytes,
+                0,
+            );
+            if status.0 != 0 {
+                continue;
+            }
+
+            // Output buffer: plaintext + 16 bytes for AES block padding
+            let mut output = vec![0u8; plaintext_size + 16];
+            let mut bytes_written: u32 = 0;
+
+            let _ = BCryptEncrypt(
+                key_handle,
+                Some(&plaintext),
+                None,
+                None,
+                Some(&mut output),
+                &mut bytes_written,
+                BCRYPT_BLOCK_PADDING,
+            );
+
+            black_box(&output);
+            black_box(bytes_written);
+
+            let _ = BCryptDestroyKey(key_handle);
+        }
+
+        let _ = BCryptCloseAlgorithmProvider(alg, 0);
+    }
+}
+
+fn bcrypt_rng_algorithms(params: &TaskParams, _rng: &mut ThreadRng) {
+    let alg_ids = [
+        windows::core::w!("RNG"),
+        windows::core::w!("FIPS186DSARNG"),
+        windows::core::w!("DUALECRNG"),
+    ];
+
+    let buf_size = params.buffer_size.min(4096);
+    let mut buffer = vec![0u8; buf_size];
+
+    for alg_id in &alg_ids {
+        unsafe {
+            let mut alg = BCRYPT_ALG_HANDLE::default();
+            let status = BCryptOpenAlgorithmProvider(
+                &mut alg,
+                *alg_id,
+                None,
+                BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
+            );
+            if status.0 != 0 {
+                // Algorithm may not be available on this system, skip
+                continue;
+            }
+
+            for _ in 0..params.iterations.min(50) {
+                let _ = BCryptGenRandom(alg, &mut buffer, BCRYPTGENRANDOM_FLAGS(0));
+                black_box(&buffer);
+            }
+
+            let _ = BCryptCloseAlgorithmProvider(alg, 0);
+        }
     }
 }
