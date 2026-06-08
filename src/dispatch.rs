@@ -2,9 +2,10 @@ use crate::categories::Categories;
 use crate::intensity::Intensity;
 use crate::jitter;
 use crate::tasks::{self, TaskParams};
+use crate::workdata::WorkData;
 use rand::seq::SliceRandom;
 
-pub fn execute(intensity: Intensity, effective: Categories, jitter_enabled: bool) {
+pub fn execute(intensity: Intensity, effective: Categories, jitter_enabled: bool, work_data: &WorkData) {
     let mut rng = rand::thread_rng();
     let all = tasks::all_tasks();
     let eligible: Vec<_> = all
@@ -42,6 +43,6 @@ pub fn execute(intensity: Intensity, effective: Categories, jitter_enabled: bool
                 base.call_depth
             },
         };
-        (task.func)(&params, &mut rng);
+        (task.func)(&params, &mut rng, work_data);
     }
 }

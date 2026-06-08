@@ -1,5 +1,6 @@
 use crate::categories::Categories;
 use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
 use std::hint::black_box;
 use windows::Win32::System::Registry::*;
@@ -136,7 +137,7 @@ unsafe fn enum_values(hkey: HKEY, max_values: usize) {
     }
 }
 
-fn read_installed_software(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_installed_software(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\0";
@@ -152,7 +153,7 @@ fn read_installed_software(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 50];
         let bytes = b"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\0";
@@ -191,7 +192,7 @@ fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn enumerate_services_reg(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_services_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 50];
         let bytes = b"SYSTEM\\CurrentControlSet\\Services\0";
@@ -207,7 +208,7 @@ fn enumerate_services_reg(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation\0";
@@ -245,7 +246,7 @@ fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 70];
         let bytes = b"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment\0";
@@ -290,7 +291,7 @@ fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\0";
@@ -340,7 +341,7 @@ fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0\0";
@@ -382,7 +383,7 @@ fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts\0";
@@ -412,7 +413,7 @@ fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     const PATH_HKLM: &[u16] = &{
         let mut arr = [0u16; 50];
         let bytes = b"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\0";
@@ -434,7 +435,6 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng) {
         arr
     };
     unsafe {
-        // Read HKLM\...\Run
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
@@ -448,7 +448,6 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng) {
             let _ = RegCloseKey(hkey);
         }
 
-        // Read HKCU\...\Run
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
             HKEY_CURRENT_USER,
@@ -464,7 +463,7 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_file_associations(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_file_associations(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         let mut name_buf = [0u16; 256];
         for i in 0..params.iterations as u32 {
@@ -482,7 +481,6 @@ fn read_file_associations(params: &TaskParams, _rng: &mut ThreadRng) {
             if result.0 != 0 {
                 break;
             }
-            // Only process entries starting with '.'
             if name_len > 0 && name_buf[0] == b'.' as u16 {
                 black_box(&name_buf[..name_len as usize]);
             }

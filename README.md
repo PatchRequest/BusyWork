@@ -47,7 +47,50 @@ BusyWork::new(Intensity::Ultra)
     .run();
 ```
 
-Drop it in any loop — every iteration looks different:
+### Data Flow Integration
+
+Busywork blocks can blend into surrounding code by processing **your variables**. Feed any data from the current scope — tasks will weave it into their control flow (hashing it, sorting it, using it as loop bounds), making the block indistinguishable from real data processing to static or dynamic analysis.
+
+All data is **cloned on feed** — originals are never modified.
+
+```rust
+let session_id: u64 = 0xDEADBEEF;
+let payload = vec![0x41u8; 1024];
+let user_name = "admin";
+let packet_count: u32 = 147;
+
+BusyWork::new(Intensity::Medium)
+    .allow(Categories::COMPUTE | Categories::MEMORY)
+    .feed(&session_id)      // integers, floats, bools
+    .feed(&payload)          // Vec<u8>, &[u8], [u8; N]
+    .feed(user_name)         // &str, String
+    .feed(&packet_count)     // unlimited parameters
+    .run();
+```
+
+Without `.feed()`, tasks generate random input data — detectable as isolated noise blocks with no data dependency on the surrounding program. With `.feed()`, the busywork reads and processes the same variables as your real code. A data-flow analyzer cannot determine which computations are "real" and which are busywork.
+
+**Works with custom types** — implement `FeedWork` for your own structs:
+
+```rust
+use busywork::FeedWork;
+
+struct GameState { x: f32, y: f32, hp: u32 }
+
+impl FeedWork for GameState {
+    fn write_work_bytes(&self, out: &mut Vec<u8>) {
+        self.x.write_work_bytes(out);
+        self.y.write_work_bytes(out);
+        self.hp.write_work_bytes(out);
+    }
+}
+
+BusyWork::new(Intensity::Low)
+    .feed(&game_state)
+    .run();
+```
+
+### Loop example
 
 ```rust
 loop {
@@ -149,6 +192,7 @@ Every design decision optimizes for evasion:
 |-----------|----------------|
 | **Random task selection per call** | Behavioral sequence matching — no two calls produce the same API call order |
 | **±30% jitter on all parameters** | Timing heuristics — iteration counts, buffer sizes, call depths all vary |
+| **Data flow integration via `.feed()`** | Data-flow analysis — busywork operates on the same variables as surrounding code, preventing isolation as "noise blocks" |
 | **Task registry rebuilt per call** | Static analysis — no stable global function pointer table to fingerprint |
 | **Function pointers, not trait objects** | Vtable signature detection — each task is a direct call to a unique address |
 | **`black_box` on all results** | Dead-code elimination — compiler can't optimize away the work |
@@ -170,10 +214,34 @@ Call 4: FindFirstFile(*.dll) × 40 → GetVolumeInformation → memcpy(16KB) × 
 
 No repeating pattern. Each call exercises different subsystems, different buffer sizes, different iteration counts. To an EDR, it looks like a normal application doing normal things.
 
+With `.feed()`, the data flowing through these operations comes from your actual program variables — hash chains process your session tokens, sorts operate on your counters, crypto operations encrypt your payloads. A taint-tracking analyzer following your variables will see them consumed by what appears to be legitimate processing.
+
+## Testing
+
+196 tests across 4 test suites:
+
+| Suite | Tests | What it covers |
+|-------|-------|----------------|
+| `workdata::tests` | 52 | Every `FeedWork` type, `blend_into` XOR correctness, `blend_seed`/`derive_usize` determinism, clone independence, empty/zero edge cases |
+| `tasks::tests` | 18 | Every registered task function called directly with 10 work-data shapes × parameter extremes (zero, min, large). Registry completeness (76 tasks, no duplicates) |
+| `tasks::compute::tests` | 19 | Mirror tests proving work data changes computation: hash inputs differ, fibonacci starting values shift, sieve limits get bias, cipher keys incorporate fed data, distinct inputs produce distinct seeds |
+| `tasks::memory::tests` | 9 | Mirror tests proving work data flows into memory tasks: buffers modified, patterns XOR'd, ring buffers seeded, reversibility verified |
+| `tests/smoke.rs` | 9 | Basic API smoke tests, category filtering, jitter toggle |
+| `tests/bench.rs` | 4 | Intensity/category benchmarks, jitter variance measurement |
+| `tests/feed.rs` | 62 | Data isolation (15 types verified untouched after run), per-category with feed, intensity levels, edge cases (NaN, Unicode, 64KB), builder combinations, type coverage |
+| `tests/robustness.rs` | 23 | Stress (500 rapid calls, 10k small feeds, 1MB feed), custom `FeedWork` impl, regression patterns (empty→real, alternating, max values) |
+
+```
+cargo test --lib           # 101 unit tests
+cargo test --test feed     # 62 integration tests
+cargo test --test robustness  # 23 stress/regression tests
+```
+
 ## Stats
 
 ```
 76 tasks across 7 categories
-2,688 lines of Rust
+31 tasks actively consume fed work data (COMPUTE, MEMORY, CRYPTO)
+196 tests across unit, integration, stress, and mirror test suites
 0 time objects in the library binary
 ```

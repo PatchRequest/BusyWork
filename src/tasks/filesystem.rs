@@ -1,5 +1,6 @@
 use crate::categories::Categories;
 use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
 use std::hint::black_box;
@@ -69,7 +70,7 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-fn enumerate_system_dir(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_system_dir(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\System32")?;
         for (i, entry) in dir.enumerate() {
@@ -84,7 +85,7 @@ fn enumerate_system_dir(params: &TaskParams, _rng: &mut ThreadRng) {
     })();
 }
 
-fn enumerate_temp_dir(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_temp_dir(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(std::env::temp_dir())?;
         for (i, entry) in dir.enumerate() {
@@ -99,7 +100,7 @@ fn enumerate_temp_dir(params: &TaskParams, _rng: &mut ThreadRng) {
     })();
 }
 
-fn stat_system_files(params: &TaskParams, rng: &mut ThreadRng) {
+fn stat_system_files(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let paths = [
         r"C:\Windows\explorer.exe",
         r"C:\Windows\notepad.exe",
@@ -119,7 +120,7 @@ fn stat_system_files(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn read_small_files(params: &TaskParams, rng: &mut ThreadRng) {
+fn read_small_files(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let paths = [
         r"C:\Windows\System32\drivers\etc\hosts",
         r"C:\Windows\System32\drivers\etc\services",
@@ -135,7 +136,7 @@ fn read_small_files(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn enumerate_program_files(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_program_files(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let dirs = [r"C:\Program Files", r"C:\Program Files (x86)"];
         let mut count = 0usize;
@@ -158,7 +159,7 @@ fn enumerate_program_files(params: &TaskParams, _rng: &mut ThreadRng) {
     })();
 }
 
-fn enumerate_fonts(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_fonts(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\Fonts")?;
         for (i, entry) in dir.enumerate() {
@@ -175,7 +176,7 @@ fn enumerate_fonts(params: &TaskParams, _rng: &mut ThreadRng) {
     })();
 }
 
-fn enumerate_drivers(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_drivers(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\System32\drivers")?;
         for (i, entry) in dir.enumerate() {
@@ -191,7 +192,7 @@ fn enumerate_drivers(params: &TaskParams, _rng: &mut ThreadRng) {
     })();
 }
 
-fn enumerate_prefetch(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_prefetch(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\Prefetch")?;
         for (i, entry) in dir.enumerate() {
@@ -208,7 +209,7 @@ fn enumerate_prefetch(params: &TaskParams, _rng: &mut ThreadRng) {
     })();
 }
 
-fn enumerate_logs(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_logs(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let mut count = 0usize;
         let base = std::path::Path::new(r"C:\Windows\Logs");
@@ -244,7 +245,7 @@ fn enumerate_logs(params: &TaskParams, _rng: &mut ThreadRng) {
     })();
 }
 
-fn stat_common_dlls(params: &TaskParams, rng: &mut ThreadRng) {
+fn stat_common_dlls(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let dlls = [
         r"C:\Windows\System32\kernel32.dll",
         r"C:\Windows\System32\ntdll.dll",
@@ -276,7 +277,7 @@ fn stat_common_dlls(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn read_system_files_varied(params: &TaskParams, rng: &mut ThreadRng) {
+fn read_system_files_varied(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let paths = [
         r"C:\Windows\win.ini",
         r"C:\Windows\system.ini",
@@ -293,7 +294,7 @@ fn read_system_files_varied(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn enumerate_user_profile(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_user_profile(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     let _ = (|| -> std::io::Result<()> {
         let profile = std::env::var("USERPROFILE").map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "USERPROFILE not set")

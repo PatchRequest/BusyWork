@@ -1,5 +1,6 @@
 use crate::categories::Categories;
 use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::hint::black_box;
@@ -100,15 +101,13 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-// ── Existing tasks ──────────────────────────────────────────────────────────
-
 unsafe extern "system" fn enum_window_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let windows = &mut *(lparam.0 as *mut Vec<HWND>);
     windows.push(hwnd);
     BOOL(1)
 }
 
-fn enumerate_windows(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_windows(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         let mut windows: Vec<HWND> = Vec::new();
         let ptr = &mut windows as *mut Vec<HWND> as isize;
@@ -122,7 +121,7 @@ fn enumerate_windows(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn enumerate_processes(params: &TaskParams, _rng: &mut ThreadRng) {
+fn enumerate_processes(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         let snapshot = match snapshot {
@@ -149,7 +148,7 @@ fn enumerate_processes(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn query_system_info(params: &TaskParams, _rng: &mut ThreadRng) {
+fn query_system_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.call_depth {
             let mut sys_info = SYSTEM_INFO::default();
@@ -166,20 +165,18 @@ fn query_system_info(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn read_clipboard(params: &TaskParams, _rng: &mut ThreadRng) {
+fn read_clipboard(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.call_depth {
             if OpenClipboard(HWND::default()).is_ok() {
-                let _ = black_box(GetClipboardData(1)); // CF_TEXT
+                let _ = black_box(GetClipboardData(1));
                 let _ = CloseClipboard();
             }
         }
     }
 }
 
-// ── New tasks ───────────────────────────────────────────────────────────────
-
-fn get_system_metrics(params: &TaskParams, rng: &mut ThreadRng) {
+fn get_system_metrics(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     const METRIC_INDICES: [i32; 10] = [
         0,  // SM_CXSCREEN
         1,  // SM_CYSCREEN
@@ -203,7 +200,7 @@ fn get_system_metrics(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn get_foreground_window_info(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_foreground_window_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.call_depth {
             let hwnd = GetForegroundWindow();
@@ -224,7 +221,7 @@ fn get_foreground_window_info(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_cursor_position(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_cursor_position(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.iterations {
             let mut point = POINT::default();
@@ -235,7 +232,7 @@ fn get_cursor_position(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_desktop_window_info(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_desktop_window_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.call_depth {
             let hwnd = GetDesktopWindow();
@@ -259,7 +256,7 @@ fn get_desktop_window_info(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_logical_drives_info(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_logical_drives_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         let mask = GetLogicalDrives();
         if mask == 0 {
@@ -277,7 +274,6 @@ fn get_logical_drives_info(params: &TaskParams, _rng: &mut ThreadRng) {
             black_box(drive_type);
         }
 
-        // Repeat the iteration to burn more cycles based on params
         for _ in 1..params.call_depth {
             let m = GetLogicalDrives();
             black_box(m);
@@ -285,7 +281,7 @@ fn get_logical_drives_info(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_volume_info(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_volume_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.call_depth {
             let mut volume_name = [0u16; 260];
@@ -313,7 +309,7 @@ fn get_volume_info(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_disk_free_space(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_disk_free_space(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.call_depth {
             let mut free_bytes_available: u64 = 0;
@@ -335,7 +331,7 @@ fn get_disk_free_space(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn find_files_pattern(params: &TaskParams, _rng: &mut ThreadRng) {
+fn find_files_pattern(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         let mut find_data = WIN32_FIND_DATAW::default();
         let handle = FindFirstFileW(w!("C:\\Windows\\System32\\*.dll"), &mut find_data);
@@ -361,7 +357,7 @@ fn find_files_pattern(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_module_handles(params: &TaskParams, rng: &mut ThreadRng) {
+fn get_module_handles(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let dll_names: &[PCWSTR] = &[
         w!("kernel32.dll"),
         w!("ntdll.dll"),
@@ -393,7 +389,7 @@ fn get_module_handles(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn virtual_query_memory(params: &TaskParams, _rng: &mut ThreadRng) {
+fn virtual_query_memory(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         let mut addr: usize = 0;
         let info_size = std::mem::size_of::<MEMORY_BASIC_INFORMATION>();
@@ -413,9 +409,7 @@ fn virtual_query_memory(params: &TaskParams, _rng: &mut ThreadRng) {
             black_box(info.State);
             black_box(info.Type);
 
-            // Advance to the next region
             let region_size = if info.RegionSize == 0 {
-                // Avoid infinite loop on zero-size region
                 4096
             } else {
                 info.RegionSize
@@ -428,7 +422,7 @@ fn virtual_query_memory(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_system_directories(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_system_directories(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.call_depth {
             let mut sys_dir = [0u16; 260];
@@ -446,7 +440,7 @@ fn get_system_directories(params: &TaskParams, _rng: &mut ThreadRng) {
     }
 }
 
-fn get_process_thread_ids(params: &TaskParams, _rng: &mut ThreadRng) {
+fn get_process_thread_ids(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
     unsafe {
         for _ in 0..params.iterations {
             let pid = GetCurrentProcessId();

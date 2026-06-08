@@ -1,5 +1,6 @@
 use crate::categories::Categories;
 use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
 use rand::RngCore;
@@ -66,7 +67,7 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-fn dns_lookups(params: &TaskParams, rng: &mut ThreadRng) {
+fn dns_lookups(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let hosts = [
         "google.com:80",
         "microsoft.com:80",
@@ -104,7 +105,7 @@ fn dns_lookups(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn http_get(params: &TaskParams, rng: &mut ThreadRng) {
+fn http_get(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let targets: &[(&str, u16, &str)] = &[
         ("httpbin.org", 80, "/get"),
         ("ip-api.com", 80, "/json"),
@@ -141,7 +142,7 @@ fn http_get(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn ntp_query(params: &TaskParams, rng: &mut ThreadRng) {
+fn ntp_query(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let servers = [
         "pool.ntp.org:123",
         "time.google.com:123",
@@ -162,7 +163,7 @@ fn ntp_query(params: &TaskParams, rng: &mut ThreadRng) {
         };
         set_socket_timeouts(&socket, 3000);
         let mut packet = [0u8; 48];
-        packet[0] = 0x1B; // NTP v3, client mode
+        packet[0] = 0x1B;
         if socket.send_to(&packet, server).is_err() {
             continue;
         }
@@ -172,7 +173,7 @@ fn ntp_query(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn http_head_request(params: &TaskParams, rng: &mut ThreadRng) {
+fn http_head_request(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let targets: &[(&str, u16, &str)] = &[
         ("httpbin.org", 80, "/get"),
         ("httpbin.org", 80, "/headers"),
@@ -208,7 +209,7 @@ fn http_head_request(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn tcp_connect_probe(params: &TaskParams, rng: &mut ThreadRng) {
+fn tcp_connect_probe(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let targets: &[(&str, u16)] = &[
         ("google.com", 80),
         ("google.com", 443),
@@ -224,17 +225,15 @@ fn tcp_connect_probe(params: &TaskParams, rng: &mut ThreadRng) {
     for _ in 0..params.iterations.min(10) {
         if let Some(&(host, port)) = targets.choose(rng) {
             let addr = format!("{}:{}", host, port);
-            // Just connect and immediately drop — TCP handshake only
             if let Ok(stream) = TcpStream::connect(&*addr) {
                 set_socket_timeouts(&stream, 2000);
                 black_box(&stream);
-                // stream is dropped here, sending FIN
             }
         }
     }
 }
 
-fn dns_varied_ports(params: &TaskParams, rng: &mut ThreadRng) {
+fn dns_varied_ports(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let hosts = [
         "example.com:21",
         "example.com:22",
@@ -263,7 +262,7 @@ fn dns_varied_ports(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn http_post_discard(params: &TaskParams, rng: &mut ThreadRng) {
+fn http_post_discard(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
     let targets: &[(&str, u16, &str, &str)] = &[
         ("httpbin.org", 80, "/post", "POST"),
         ("httpbin.org", 80, "/anything", "POST"),
@@ -275,7 +274,6 @@ fn http_post_discard(params: &TaskParams, rng: &mut ThreadRng) {
     let body_size = params.buffer_size.min(1024);
     let mut body = vec![0u8; body_size];
     rng.fill_bytes(&mut body);
-    // Encode body as hex string for a safe text payload
     let body_hex: String = body.iter().map(|b| format!("{:02x}", b)).collect();
 
     for _ in 0..params.call_depth.min(5) {

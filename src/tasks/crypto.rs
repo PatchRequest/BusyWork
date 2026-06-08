@@ -1,5 +1,6 @@
 use crate::categories::Categories;
 use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
 use rand::RngCore;
 use std::hint::black_box;
@@ -45,7 +46,7 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-fn bcrypt_gen_random(params: &TaskParams, _rng: &mut ThreadRng) {
+fn bcrypt_gen_random(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData) {
     let size = params.buffer_size.min(65536);
     let mut buffer = vec![0u8; size];
     for _ in 0..params.iterations.min(100) {
@@ -56,14 +57,16 @@ fn bcrypt_gen_random(params: &TaskParams, _rng: &mut ThreadRng) {
                 BCRYPT_USE_SYSTEM_PREFERRED_RNG,
             );
         }
+        work.blend_into(&mut buffer);
         black_box(&buffer);
     }
 }
 
-fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng) {
+fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
+    work.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -86,7 +89,7 @@ fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng) {
 
             let _ = BCryptHashData(hash_handle, &data, 0);
 
-            let mut output = vec![0u8; 32]; // SHA-256 output
+            let mut output = vec![0u8; 32];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
@@ -97,10 +100,11 @@ fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng) {
+fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
+    work.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -123,7 +127,7 @@ fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng) {
 
             let _ = BCryptHashData(hash_handle, &data, 0);
 
-            let mut output = vec![0u8; 64]; // SHA-512 output
+            let mut output = vec![0u8; 64];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
@@ -134,10 +138,11 @@ fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng) {
+fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
+    work.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -160,7 +165,7 @@ fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng) {
 
             let _ = BCryptHashData(hash_handle, &data, 0);
 
-            let mut output = vec![0u8; 16]; // MD5 output
+            let mut output = vec![0u8; 16];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
@@ -171,10 +176,11 @@ fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng) {
+fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
+    work.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -197,7 +203,7 @@ fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng) {
 
             let _ = BCryptHashData(hash_handle, &data, 0);
 
-            let mut output = vec![0u8; 20]; // SHA-1 output
+            let mut output = vec![0u8; 20];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
@@ -208,12 +214,13 @@ fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng) {
+fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
     let plaintext_size = params.buffer_size.min(4096);
     let mut plaintext = vec![0u8; plaintext_size];
     rng.fill_bytes(&mut plaintext);
+    work.blend_into(&mut plaintext);
 
-    let mut key_bytes = [0u8; 32]; // AES-256 key
+    let mut key_bytes = [0u8; 32];
     rng.fill_bytes(&mut key_bytes);
 
     unsafe {
@@ -241,7 +248,6 @@ fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng) {
                 continue;
             }
 
-            // Output buffer: plaintext + 16 bytes for AES block padding
             let mut output = vec![0u8; plaintext_size + 16];
             let mut bytes_written: u32 = 0;
 
@@ -265,7 +271,7 @@ fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng) {
     }
 }
 
-fn bcrypt_rng_algorithms(params: &TaskParams, _rng: &mut ThreadRng) {
+fn bcrypt_rng_algorithms(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData) {
     let alg_ids = [
         windows::core::w!("RNG"),
         windows::core::w!("FIPS186DSARNG"),
@@ -285,12 +291,12 @@ fn bcrypt_rng_algorithms(params: &TaskParams, _rng: &mut ThreadRng) {
                 BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
             );
             if status.0 != 0 {
-                // Algorithm may not be available on this system, skip
                 continue;
             }
 
             for _ in 0..params.iterations.min(50) {
                 let _ = BCryptGenRandom(alg, &mut buffer, BCRYPTGENRANDOM_FLAGS(0));
+                work.blend_into(&mut buffer);
                 black_box(&buffer);
             }
 

@@ -56,3 +56,6 @@ cat-crypto = [
     "windows/Win32_Security_Cryptography",
     "windows/Win32_Foundation",
 ]
+
+[dev-dependencies]
+rand = "0.8"
