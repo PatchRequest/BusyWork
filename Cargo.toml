@@ -29,6 +29,7 @@ default = [
     "cat-winapi",
     "cat-network",
     "cat-crypto",
+    "cat-com",
 ]
 cat-compute = ["dep:sha2", "dep:md-5", "dep:flate2"]
 cat-memory = []
@@ -55,6 +56,14 @@ cat-crypto = [
     "dep:windows",
     "windows/Win32_Security_Cryptography",
     "windows/Win32_Foundation",
+]
+cat-com = [
+    "dep:windows",
+    "windows/Win32_System_Com",
+    "windows/Win32_System_Wmi",
+    "windows/Win32_Foundation",
+    "windows/Win32_System_Ole",
+    "windows/Win32_System_Variant",
 ]
 
 [dev-dependencies]

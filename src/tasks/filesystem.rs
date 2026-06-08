@@ -1,8 +1,7 @@
 use crate::categories::Categories;
-use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::tasks::{ScratchBuffer, TaskDescriptor, TaskParams};
 use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
-use rand::seq::SliceRandom;
 use std::hint::black_box;
 
 pub fn register() -> Vec<TaskDescriptor> {
@@ -70,37 +69,70 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-fn enumerate_system_dir(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_system_dir(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 16;
+    let bias = work.blend_seed() as usize % 8;
+    let limit = params.iterations + bias;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\System32")?;
         for (i, entry) in dir.enumerate() {
-            if i >= params.iterations {
+            if i < skip {
+                continue;
+            }
+            if i - skip >= limit {
                 break;
             }
             let entry = entry?;
             let meta = entry.metadata()?;
-            black_box(meta.len());
+            last_len = meta.len();
+            black_box(last_len);
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn enumerate_temp_dir(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_temp_dir(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 16;
+    let bias = work.blend_seed() as usize % 8;
+    let limit = params.iterations + bias;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(std::env::temp_dir())?;
         for (i, entry) in dir.enumerate() {
-            if i >= params.iterations {
+            if i < skip {
+                continue;
+            }
+            if i - skip >= limit {
                 break;
             }
             let entry = entry?;
             let meta = entry.metadata()?;
-            black_box(meta.len());
+            last_len = meta.len();
+            black_box(last_len);
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn stat_system_files(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn stat_system_files(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let paths = [
         r"C:\Windows\explorer.exe",
         r"C:\Windows\notepad.exe",
@@ -111,44 +143,73 @@ fn stat_system_files(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData)
         r"C:\Windows\System32\ws2_32.dll",
         r"C:\Windows\System32\cmd.exe",
     ];
-    for _ in 0..params.iterations.min(200) {
-        if let Some(path) = paths.choose(rng) {
-            if let Ok(meta) = std::fs::metadata(path) {
-                black_box(meta.len());
-            }
+    let start_idx = work.derive_usize(0) % paths.len();
+    let mut last_len = 0u64;
+    for i in 0..params.iterations.min(200) {
+        let path = paths[(start_idx + i) % paths.len()];
+        if let Ok(meta) = std::fs::metadata(path) {
+            last_len = meta.len();
+            black_box(last_len);
         }
     }
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn read_small_files(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn read_small_files(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let paths = [
         r"C:\Windows\System32\drivers\etc\hosts",
         r"C:\Windows\System32\drivers\etc\services",
         r"C:\Windows\System32\drivers\etc\protocol",
         r"C:\Windows\System32\drivers\etc\networks",
     ];
-    for _ in 0..params.call_depth {
-        if let Some(path) = paths.choose(rng) {
-            if let Ok(data) = std::fs::read(path) {
-                black_box(data.len());
-            }
+    let start_idx = work.derive_usize(0) % paths.len();
+    let mut last_data: Vec<u8> = Vec::new();
+    for round in 0..params.call_depth {
+        let path = paths[(start_idx + round) % paths.len()];
+        if let Ok(mut data) = std::fs::read(path) {
+            work.blend_into(&mut data);
+            scratch.blend_into(&mut data);
+            black_box(data.len());
+            last_data = data;
         }
+    }
+    if !last_data.is_empty() {
+        let absorb_len = last_data.len().min(256);
+        scratch.absorb(&last_data[..absorb_len]);
     }
 }
 
-fn enumerate_program_files(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_program_files(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 8;
+    let bias = work.blend_seed() as usize % 8;
+    let limit = params.iterations + bias;
+    let dirs = [r"C:\Program Files", r"C:\Program Files (x86)"];
+    let mut count = 0usize;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
-        let dirs = [r"C:\Program Files", r"C:\Program Files (x86)"];
-        let mut count = 0usize;
         for dir_path in &dirs {
             if let Ok(dir) = std::fs::read_dir(dir_path) {
-                for entry in dir {
-                    if count >= params.iterations {
+                for (i, entry) in dir.enumerate() {
+                    if count >= limit {
                         return Ok(());
+                    }
+                    if i < skip && count == 0 {
+                        continue;
                     }
                     let entry = entry?;
                     if let Ok(meta) = entry.metadata() {
-                        black_box(meta.len());
+                        last_len = meta.len();
+                        black_box(last_len);
                         black_box(meta.is_dir());
                     }
                     count += 1;
@@ -157,61 +218,112 @@ fn enumerate_program_files(params: &TaskParams, _rng: &mut ThreadRng, _work: &Wo
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn enumerate_fonts(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_fonts(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 16;
+    let bias = work.blend_seed() as usize % 8;
+    let limit = params.iterations + bias;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\Fonts")?;
         for (i, entry) in dir.enumerate() {
-            if i >= params.iterations {
+            if i < skip {
+                continue;
+            }
+            if i - skip >= limit {
                 break;
             }
             let entry = entry?;
             black_box(entry.file_name());
             if let Ok(meta) = entry.metadata() {
-                black_box(meta.len());
+                last_len = meta.len();
+                black_box(last_len);
             }
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn enumerate_drivers(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_drivers(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 16;
+    let bias = work.blend_seed() as usize % 8;
+    let limit = params.iterations + bias;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\System32\drivers")?;
         for (i, entry) in dir.enumerate() {
-            if i >= params.iterations {
+            if i < skip {
+                continue;
+            }
+            if i - skip >= limit {
                 break;
             }
             let entry = entry?;
             if let Ok(meta) = entry.metadata() {
-                black_box(meta.len());
+                last_len = meta.len();
+                black_box(last_len);
             }
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn enumerate_prefetch(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_prefetch(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 16;
+    let bias = work.blend_seed() as usize % 8;
+    let limit = params.iterations + bias;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
         let dir = std::fs::read_dir(r"C:\Windows\Prefetch")?;
         for (i, entry) in dir.enumerate() {
-            if i >= params.iterations {
+            if i < skip {
+                continue;
+            }
+            if i - skip >= limit {
                 break;
             }
             let entry = entry?;
             black_box(entry.file_name());
             if let Ok(meta) = entry.metadata() {
-                black_box(meta.len());
+                last_len = meta.len();
+                black_box(last_len);
             }
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn enumerate_logs(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_logs(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 16;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
         let mut count = 0usize;
+        let mut skipped = 0usize;
         let base = std::path::Path::new(r"C:\Windows\Logs");
         let dir = std::fs::read_dir(base)?;
         for entry in dir {
@@ -219,9 +331,14 @@ fn enumerate_logs(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
                 break;
             }
             let entry = entry?;
+            if skipped < skip {
+                skipped += 1;
+                continue;
+            }
             black_box(entry.file_name());
             if let Ok(meta) = entry.metadata() {
-                black_box(meta.len());
+                last_len = meta.len();
+                black_box(last_len);
                 if meta.is_dir() {
                     if let Ok(subdir) = std::fs::read_dir(entry.path()) {
                         for sub_entry in subdir {
@@ -231,7 +348,8 @@ fn enumerate_logs(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
                             if let Ok(sub_entry) = sub_entry {
                                 black_box(sub_entry.file_name());
                                 if let Ok(sub_meta) = sub_entry.metadata() {
-                                    black_box(sub_meta.len());
+                                    last_len = sub_meta.len();
+                                    black_box(last_len);
                                 }
                             }
                             count += 1;
@@ -243,9 +361,15 @@ fn enumerate_logs(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn stat_common_dlls(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn stat_common_dlls(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let dlls = [
         r"C:\Windows\System32\kernel32.dll",
         r"C:\Windows\System32\ntdll.dll",
@@ -268,16 +392,24 @@ fn stat_common_dlls(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) 
         r"C:\Windows\System32\ncrypt.dll",
         r"C:\Windows\System32\shlwapi.dll",
     ];
-    for _ in 0..params.iterations {
-        if let Some(path) = dlls.choose(rng) {
-            if let Ok(meta) = std::fs::metadata(path) {
-                black_box(meta.len());
-            }
+    let start_idx = work.derive_usize(0) % dlls.len();
+    let mut last_len = 0u64;
+    for i in 0..params.iterations {
+        let path = dlls[(start_idx + i) % dlls.len()];
+        if let Ok(meta) = std::fs::metadata(path) {
+            last_len = meta.len();
+            black_box(last_len);
         }
     }
+    scratch.absorb(&last_len.to_ne_bytes());
 }
 
-fn read_system_files_varied(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn read_system_files_varied(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let paths = [
         r"C:\Windows\win.ini",
         r"C:\Windows\system.ini",
@@ -285,32 +417,54 @@ fn read_system_files_varied(params: &TaskParams, rng: &mut ThreadRng, _work: &Wo
         r"C:\Windows\System32\drivers\etc\services",
         r"C:\Windows\System32\drivers\etc\protocol",
     ];
-    for _ in 0..params.iterations {
-        if let Some(path) = paths.choose(rng) {
-            if let Ok(data) = std::fs::read(path) {
-                black_box(data.len());
-            }
+    let start_idx = work.derive_usize(0) % paths.len();
+    let mut last_data: Vec<u8> = Vec::new();
+    for i in 0..params.iterations {
+        let path = paths[(start_idx + i) % paths.len()];
+        if let Ok(mut data) = std::fs::read(path) {
+            work.blend_into(&mut data);
+            scratch.blend_into(&mut data);
+            black_box(data.len());
+            last_data = data;
         }
+    }
+    if !last_data.is_empty() {
+        let absorb_len = last_data.len().min(256);
+        scratch.absorb(&last_data[..absorb_len]);
     }
 }
 
-fn enumerate_user_profile(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_user_profile(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
+    let skip = work.derive_usize(0) % 16;
+    let bias = work.blend_seed() as usize % 8;
+    let limit = params.iterations + bias;
+    let mut last_len = 0u64;
     let _ = (|| -> std::io::Result<()> {
         let profile = std::env::var("USERPROFILE").map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "USERPROFILE not set")
         })?;
         let dir = std::fs::read_dir(profile)?;
         for (i, entry) in dir.enumerate() {
-            if i >= params.iterations {
+            if i < skip {
+                continue;
+            }
+            if i - skip >= limit {
                 break;
             }
             let entry = entry?;
             black_box(entry.file_name());
             if let Ok(meta) = entry.metadata() {
-                black_box(meta.len());
+                last_len = meta.len();
+                black_box(last_len);
                 black_box(meta.is_dir());
             }
         }
         Ok(())
     })();
+    scratch.absorb(&last_len.to_ne_bytes());
 }

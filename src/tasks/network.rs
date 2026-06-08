@@ -1,8 +1,7 @@
 use crate::categories::Categories;
-use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::tasks::{ScratchBuffer, TaskDescriptor, TaskParams};
 use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
-use rand::seq::SliceRandom;
 use rand::RngCore;
 use std::hint::black_box;
 use std::io::{Read, Write};
@@ -67,7 +66,7 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-fn dns_lookups(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn dns_lookups(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     let hosts = [
         "google.com:80",
         "microsoft.com:80",
@@ -94,18 +93,23 @@ fn dns_lookups(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
         "fastly.com:80",
         "aws.amazon.com:80",
     ];
-    for _ in 0..params.iterations.min(50) {
-        if let Some(host) = hosts.choose(rng) {
-            let _ = host.to_socket_addrs().map(|addrs| {
-                for addr in addrs {
-                    black_box(addr);
-                }
-            });
-        }
+    let start_idx = work.derive_usize(0) % hosts.len();
+    for i in 0..params.iterations.min(50) {
+        let host = hosts[(start_idx + i) % hosts.len()];
+        let _ = host.to_socket_addrs().map(|addrs| {
+            for addr in addrs {
+                let bytes = match addr {
+                    std::net::SocketAddr::V4(v4) => v4.ip().octets().to_vec(),
+                    std::net::SocketAddr::V6(v6) => v6.ip().octets().to_vec(),
+                };
+                scratch.absorb(&bytes);
+                black_box(addr);
+            }
+        });
     }
 }
 
-fn http_get(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn http_get(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     let targets: &[(&str, u16, &str)] = &[
         ("httpbin.org", 80, "/get"),
         ("ip-api.com", 80, "/json"),
@@ -119,30 +123,33 @@ fn http_get(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
         ("checkip.amazonaws.com", 80, "/"),
         ("api.myip.com", 80, "/"),
     ];
-    for _ in 0..params.call_depth.min(5) {
-        if let Some(&(host, port, path)) = targets.choose(rng) {
-            let addr = format!("{}:{}", host, port);
-            let stream = match TcpStream::connect(&*addr) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            set_socket_timeouts(&stream, 3000);
-            let request = format!(
-                "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-                path, host
-            );
-            let mut stream = stream;
-            if stream.write_all(request.as_bytes()).is_err() {
-                continue;
-            }
-            let mut response = vec![0u8; 4096];
-            let _ = stream.read(&mut response);
-            black_box(&response);
+    let start_idx = work.derive_usize(0) % targets.len();
+    for i in 0..params.call_depth.min(5) {
+        let &(host, port, path) = &targets[(start_idx + i) % targets.len()];
+        let addr = format!("{}:{}", host, port);
+        let stream = match TcpStream::connect(&*addr) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        set_socket_timeouts(&stream, 3000);
+        let request = format!(
+            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+            path, host
+        );
+        let mut stream = stream;
+        if stream.write_all(request.as_bytes()).is_err() {
+            continue;
         }
+        let mut response = vec![0u8; 4096];
+        let _ = stream.read(&mut response);
+        work.blend_into(&mut response);
+        scratch.blend_into(&mut response);
+        scratch.absorb(&response[..response.len().min(256)]);
+        black_box(&response);
     }
 }
 
-fn ntp_query(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn ntp_query(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     let servers = [
         "pool.ntp.org:123",
         "time.google.com:123",
@@ -152,11 +159,9 @@ fn ntp_query(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
         "time.nist.gov:123",
         "ntp.ubuntu.com:123",
     ];
-    for _ in 0..params.call_depth.min(5) {
-        let server = match servers.choose(rng) {
-            Some(s) => *s,
-            None => continue,
-        };
+    let start_idx = work.derive_usize(0) % servers.len();
+    for i in 0..params.call_depth.min(5) {
+        let server = servers[(start_idx + i) % servers.len()];
         let socket = match UdpSocket::bind("0.0.0.0:0") {
             Ok(s) => s,
             Err(_) => continue,
@@ -169,11 +174,12 @@ fn ntp_query(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
         }
         let mut response = [0u8; 48];
         let _ = socket.recv_from(&mut response);
+        scratch.absorb(&response);
         black_box(&response);
     }
 }
 
-fn http_head_request(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn http_head_request(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     let targets: &[(&str, u16, &str)] = &[
         ("httpbin.org", 80, "/get"),
         ("httpbin.org", 80, "/headers"),
@@ -186,30 +192,31 @@ fn http_head_request(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData)
         ("icanhazip.com", 80, "/"),
         ("api.ipify.org", 80, "/"),
     ];
-    for _ in 0..params.call_depth.min(5) {
-        if let Some(&(host, port, path)) = targets.choose(rng) {
-            let addr = format!("{}:{}", host, port);
-            let stream = match TcpStream::connect(&*addr) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            set_socket_timeouts(&stream, 3000);
-            let request = format!(
-                "HEAD {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-                path, host
-            );
-            let mut stream = stream;
-            if stream.write_all(request.as_bytes()).is_err() {
-                continue;
-            }
-            let mut response = vec![0u8; 2048];
-            let _ = stream.read(&mut response);
-            black_box(&response);
+    let start_idx = work.derive_usize(0) % targets.len();
+    for i in 0..params.call_depth.min(5) {
+        let &(host, port, path) = &targets[(start_idx + i) % targets.len()];
+        let addr = format!("{}:{}", host, port);
+        let stream = match TcpStream::connect(&*addr) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        set_socket_timeouts(&stream, 3000);
+        let request = format!(
+            "HEAD {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+            path, host
+        );
+        let mut stream = stream;
+        if stream.write_all(request.as_bytes()).is_err() {
+            continue;
         }
+        let mut response = vec![0u8; 2048];
+        let _ = stream.read(&mut response);
+        scratch.absorb(&response[..response.len().min(256)]);
+        black_box(&response);
     }
 }
 
-fn tcp_connect_probe(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn tcp_connect_probe(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     let targets: &[(&str, u16)] = &[
         ("google.com", 80),
         ("google.com", 443),
@@ -222,18 +229,20 @@ fn tcp_connect_probe(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData)
         ("1.1.1.1", 53),
         ("8.8.8.8", 53),
     ];
-    for _ in 0..params.iterations.min(10) {
-        if let Some(&(host, port)) = targets.choose(rng) {
-            let addr = format!("{}:{}", host, port);
-            if let Ok(stream) = TcpStream::connect(&*addr) {
-                set_socket_timeouts(&stream, 2000);
-                black_box(&stream);
-            }
+    let start_idx = work.derive_usize(0) % targets.len();
+    for i in 0..params.iterations.min(10) {
+        let &(host, port) = &targets[(start_idx + i) % targets.len()];
+        let addr = format!("{}:{}", host, port);
+        if let Ok(stream) = TcpStream::connect(&*addr) {
+            set_socket_timeouts(&stream, 2000);
+            let marker = [host.as_bytes()[0], port as u8];
+            scratch.absorb(&marker);
+            black_box(&stream);
         }
     }
 }
 
-fn dns_varied_ports(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn dns_varied_ports(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     let hosts = [
         "example.com:21",
         "example.com:22",
@@ -251,18 +260,23 @@ fn dns_varied_ports(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) 
         "example.net:25",
         "example.net:8080",
     ];
-    for _ in 0..params.iterations.min(40) {
-        if let Some(host) = hosts.choose(rng) {
-            let _ = host.to_socket_addrs().map(|addrs| {
-                for addr in addrs {
-                    black_box(addr);
-                }
-            });
-        }
+    let start_idx = work.derive_usize(0) % hosts.len();
+    for i in 0..params.iterations.min(40) {
+        let host = hosts[(start_idx + i) % hosts.len()];
+        let _ = host.to_socket_addrs().map(|addrs| {
+            for addr in addrs {
+                let bytes = match addr {
+                    std::net::SocketAddr::V4(v4) => v4.ip().octets().to_vec(),
+                    std::net::SocketAddr::V6(v6) => v6.ip().octets().to_vec(),
+                };
+                scratch.absorb(&bytes);
+                black_box(addr);
+            }
+        });
     }
 }
 
-fn http_post_discard(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData) {
+fn http_post_discard(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     let targets: &[(&str, u16, &str, &str)] = &[
         ("httpbin.org", 80, "/post", "POST"),
         ("httpbin.org", 80, "/anything", "POST"),
@@ -274,27 +288,30 @@ fn http_post_discard(params: &TaskParams, rng: &mut ThreadRng, _work: &WorkData)
     let body_size = params.buffer_size.min(1024);
     let mut body = vec![0u8; body_size];
     rng.fill_bytes(&mut body);
+    work.blend_into(&mut body);
+    scratch.blend_into(&mut body);
     let body_hex: String = body.iter().map(|b| format!("{:02x}", b)).collect();
 
-    for _ in 0..params.call_depth.min(5) {
-        if let Some(&(host, port, path, method)) = targets.choose(rng) {
-            let addr = format!("{}:{}", host, port);
-            let stream = match TcpStream::connect(&*addr) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            set_socket_timeouts(&stream, 3000);
-            let request = format!(
-                "{} {} HTTP/1.1\r\nHost: {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                method, path, host, body_hex.len(), body_hex
-            );
-            let mut stream = stream;
-            if stream.write_all(request.as_bytes()).is_err() {
-                continue;
-            }
-            let mut response = vec![0u8; 4096];
-            let _ = stream.read(&mut response);
-            black_box(&response);
+    let start_idx = work.derive_usize(0) % targets.len();
+    for i in 0..params.call_depth.min(5) {
+        let &(host, port, path, method) = &targets[(start_idx + i) % targets.len()];
+        let addr = format!("{}:{}", host, port);
+        let stream = match TcpStream::connect(&*addr) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        set_socket_timeouts(&stream, 3000);
+        let request = format!(
+            "{} {} HTTP/1.1\r\nHost: {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            method, path, host, body_hex.len(), body_hex
+        );
+        let mut stream = stream;
+        if stream.write_all(request.as_bytes()).is_err() {
+            continue;
         }
+        let mut response = vec![0u8; 4096];
+        let _ = stream.read(&mut response);
+        scratch.absorb(&response[..response.len().min(256)]);
+        black_box(&response);
     }
 }

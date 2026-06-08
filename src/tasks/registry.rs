@@ -1,5 +1,5 @@
 use crate::categories::Categories;
-use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::tasks::{ScratchBuffer, TaskDescriptor, TaskParams};
 use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
 use std::hint::black_box;
@@ -137,7 +137,7 @@ unsafe fn enum_values(hkey: HKEY, max_values: usize) {
     }
 }
 
-fn read_installed_software(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_installed_software(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\0";
@@ -148,12 +148,14 @@ fn read_installed_software(params: &TaskParams, _rng: &mut ThreadRng, _work: &Wo
         }
         arr
     };
+    let iterations = params.iterations + work.derive_usize(0) % 8;
     unsafe {
-        enum_subkeys(HKEY_LOCAL_MACHINE, PATH, params.iterations);
+        enum_subkeys(HKEY_LOCAL_MACHINE, PATH, iterations);
     }
+    scratch.absorb(&iterations.to_ne_bytes());
 }
 
-fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 50];
         let bytes = b"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\0";
@@ -164,6 +166,7 @@ fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkD
         }
         arr
     };
+    let call_depth = params.call_depth + work.blend_seed() as usize % 4;
     unsafe {
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
@@ -174,6 +177,7 @@ fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkD
             &mut hkey,
         );
         if result.0 != 0 {
+            scratch.absorb(&call_depth.to_ne_bytes());
             return;
         }
 
@@ -182,7 +186,7 @@ fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkD
             &encode_wide_const::<20>(b"CurrentBuild\0"),
             &encode_wide_const::<20>(b"EditionID\0"),
         ];
-        for _ in 0..params.call_depth {
+        for _ in 0..call_depth {
             for name in value_names {
                 read_string_value(hkey, name);
             }
@@ -190,9 +194,10 @@ fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkD
 
         let _ = RegCloseKey(hkey);
     }
+    scratch.absorb(&call_depth.to_ne_bytes());
 }
 
-fn enumerate_services_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn enumerate_services_reg(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 50];
         let bytes = b"SYSTEM\\CurrentControlSet\\Services\0";
@@ -203,12 +208,14 @@ fn enumerate_services_reg(params: &TaskParams, _rng: &mut ThreadRng, _work: &Wor
         }
         arr
     };
+    let iterations = params.iterations + work.derive_usize(0) % 8;
     unsafe {
-        enum_subkeys(HKEY_LOCAL_MACHINE, PATH, params.iterations);
+        enum_subkeys(HKEY_LOCAL_MACHINE, PATH, iterations);
     }
+    scratch.absorb(&iterations.to_ne_bytes());
 }
 
-fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation\0";
@@ -219,6 +226,7 @@ fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
         }
         arr
     };
+    let call_depth = params.call_depth + work.blend_seed() as usize % 4;
     unsafe {
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
@@ -229,6 +237,7 @@ fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
             &mut hkey,
         );
         if result.0 != 0 {
+            scratch.absorb(&call_depth.to_ne_bytes());
             return;
         }
 
@@ -236,7 +245,7 @@ fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
             &encode_wide_const::<30>(b"TimeZoneKeyName\0"),
             &encode_wide_const::<20>(b"StandardName\0"),
         ];
-        for _ in 0..params.call_depth {
+        for _ in 0..call_depth {
             for name in value_names {
                 read_string_value(hkey, name);
             }
@@ -244,9 +253,10 @@ fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
 
         let _ = RegCloseKey(hkey);
     }
+    scratch.absorb(&call_depth.to_ne_bytes());
 }
 
-fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 70];
         let bytes = b"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment\0";
@@ -257,6 +267,7 @@ fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, _work: &Work
         }
         arr
     };
+    let call_depth = params.call_depth + work.blend_seed() as usize % 4;
     unsafe {
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
@@ -267,6 +278,7 @@ fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, _work: &Work
             &mut hkey,
         );
         if result.0 != 0 {
+            scratch.absorb(&call_depth.to_ne_bytes());
             return;
         }
 
@@ -281,7 +293,7 @@ fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, _work: &Work
             &encode_wide_const::<15>(b"ComSpec\0"),
             &encode_wide_const::<15>(b"windir\0"),
         ];
-        for _ in 0..params.call_depth {
+        for _ in 0..call_depth {
             for name in value_names {
                 read_string_value(hkey, name);
             }
@@ -289,9 +301,10 @@ fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, _work: &Work
 
         let _ = RegCloseKey(hkey);
     }
+    scratch.absorb(&call_depth.to_ne_bytes());
 }
 
-fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\0";
@@ -312,6 +325,7 @@ fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDa
         }
         arr
     };
+    let call_depth = params.call_depth + work.blend_seed() as usize % 4;
     unsafe {
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
@@ -329,7 +343,7 @@ fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDa
                 &encode_wide_const::<20>(b"NV Hostname\0"),
                 &encode_wide_const::<20>(b"ICSDomain\0"),
             ];
-            for _ in 0..params.call_depth {
+            for _ in 0..call_depth {
                 for name in value_names {
                     read_string_value(hkey, name);
                 }
@@ -339,9 +353,10 @@ fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDa
 
         enum_subkeys(HKEY_LOCAL_MACHINE, INTERFACES_PATH, params.iterations);
     }
+    scratch.absorb(&call_depth.to_ne_bytes());
 }
 
-fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0\0";
@@ -352,6 +367,7 @@ fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
         }
         arr
     };
+    let call_depth = params.call_depth + work.blend_seed() as usize % 4;
     unsafe {
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
@@ -362,6 +378,7 @@ fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
             &mut hkey,
         );
         if result.0 != 0 {
+            scratch.absorb(&call_depth.to_ne_bytes());
             return;
         }
 
@@ -373,7 +390,7 @@ fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
             &encode_wide_const::<20>(b"FeatureSet\0"),
             &encode_wide_const::<15>(b"Update Status\0"),
         ];
-        for _ in 0..params.call_depth {
+        for _ in 0..call_depth {
             for name in value_names {
                 read_string_value(hkey, name);
             }
@@ -381,9 +398,10 @@ fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkDat
 
         let _ = RegCloseKey(hkey);
     }
+    scratch.absorb(&call_depth.to_ne_bytes());
 }
 
-fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH: &[u16] = &{
         let mut arr = [0u16; 60];
         let bytes = b"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts\0";
@@ -394,6 +412,7 @@ fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
         }
         arr
     };
+    let iterations = params.iterations + work.derive_usize(0) % 8;
     unsafe {
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
@@ -404,16 +423,18 @@ fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
             &mut hkey,
         );
         if result.0 != 0 {
+            scratch.absorb(&iterations.to_ne_bytes());
             return;
         }
 
-        enum_values(hkey, params.iterations);
+        enum_values(hkey, iterations);
 
         let _ = RegCloseKey(hkey);
     }
+    scratch.absorb(&iterations.to_ne_bytes());
 }
 
-fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
     const PATH_HKLM: &[u16] = &{
         let mut arr = [0u16; 50];
         let bytes = b"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\0";
@@ -434,6 +455,7 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, _work: &Work
         }
         arr
     };
+    let iterations = params.iterations + work.derive_usize(0) % 8;
     unsafe {
         let mut hkey = HKEY::default();
         let result = RegOpenKeyExW(
@@ -444,7 +466,7 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, _work: &Work
             &mut hkey,
         );
         if result.0 == 0 {
-            enum_values(hkey, params.iterations);
+            enum_values(hkey, iterations);
             let _ = RegCloseKey(hkey);
         }
 
@@ -457,16 +479,18 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, _work: &Work
             &mut hkey,
         );
         if result.0 == 0 {
-            enum_values(hkey, params.iterations);
+            enum_values(hkey, iterations);
             let _ = RegCloseKey(hkey);
         }
     }
+    scratch.absorb(&iterations.to_ne_bytes());
 }
 
-fn read_file_associations(params: &TaskParams, _rng: &mut ThreadRng, _work: &WorkData) {
+fn read_file_associations(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
+    let iterations = params.iterations + work.derive_usize(0) % 8;
     unsafe {
         let mut name_buf = [0u16; 256];
-        for i in 0..params.iterations as u32 {
+        for i in 0..iterations as u32 {
             let mut name_len = name_buf.len() as u32;
             let result = RegEnumKeyExW(
                 HKEY_CLASSES_ROOT,
@@ -486,6 +510,7 @@ fn read_file_associations(params: &TaskParams, _rng: &mut ThreadRng, _work: &Wor
             }
         }
     }
+    scratch.absorb(&iterations.to_ne_bytes());
 }
 
 const fn encode_wide_const<const N: usize>(bytes: &[u8]) -> [u16; N] {

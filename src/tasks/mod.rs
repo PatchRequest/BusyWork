@@ -12,6 +12,8 @@ pub mod network;
 pub mod registry;
 #[cfg(feature = "cat-winapi")]
 pub mod winapi_tasks;
+#[cfg(feature = "cat-com")]
+pub mod com;
 
 use crate::categories::Categories;
 use crate::workdata::WorkData;
@@ -23,7 +25,42 @@ pub struct TaskParams {
     pub call_depth: usize,
 }
 
-pub type TaskFn = fn(&TaskParams, &mut ThreadRng, &WorkData);
+pub(crate) const SCRATCH_SIZE: usize = 256;
+
+pub(crate) struct ScratchBuffer {
+    buf: [u8; SCRATCH_SIZE],
+}
+
+impl ScratchBuffer {
+    pub fn new() -> Self {
+        Self { buf: [0u8; SCRATCH_SIZE] }
+    }
+
+    pub fn seed_from(&mut self, work: &WorkData) {
+        work.blend_into(&mut self.buf);
+    }
+
+    pub fn blend_into(&self, dst: &mut [u8]) {
+        for (i, byte) in dst.iter_mut().enumerate() {
+            *byte ^= self.buf[i % SCRATCH_SIZE];
+        }
+    }
+
+    pub fn absorb(&mut self, src: &[u8]) {
+        if src.is_empty() {
+            return;
+        }
+        for (i, byte) in self.buf.iter_mut().enumerate() {
+            *byte ^= src[i % src.len()];
+        }
+    }
+
+    pub fn read(&self) -> &[u8; SCRATCH_SIZE] {
+        &self.buf
+    }
+}
+
+pub type TaskFn = fn(&TaskParams, &mut ThreadRng, &WorkData, &mut ScratchBuffer);
 
 #[allow(dead_code)]
 pub struct TaskDescriptor {
@@ -48,6 +85,8 @@ pub fn all_tasks() -> Vec<TaskDescriptor> {
     tasks.extend(network::register());
     #[cfg(feature = "cat-crypto")]
     tasks.extend(crypto::register());
+    #[cfg(feature = "cat-com")]
+    tasks.extend(com::register());
     tasks
 }
 
@@ -56,18 +95,23 @@ mod tests {
     use super::*;
     use crate::workdata::WorkData;
 
-    fn non_network_tasks() -> Vec<TaskDescriptor> {
+    fn safe_tasks() -> Vec<TaskDescriptor> {
         all_tasks()
             .into_iter()
-            .filter(|t| !t.category.contains(Categories::NETWORK))
+            .filter(|t| {
+                !t.category.contains(Categories::NETWORK)
+                    && !t.category.contains(Categories::COM)
+            })
             .collect()
     }
 
     fn run_every_task(params: &TaskParams, work: &WorkData) {
-        let tasks = non_network_tasks();
+        let tasks = safe_tasks();
         let mut rng = rand::thread_rng();
+        let mut scratch = ScratchBuffer::new();
+        scratch.seed_from(work);
         for task in &tasks {
-            (task.func)(params, &mut rng, work);
+            (task.func)(params, &mut rng, work, &mut scratch);
         }
     }
 
@@ -75,6 +119,94 @@ mod tests {
         let mut w = WorkData::new();
         w.feed(data);
         w
+    }
+
+    // ── ScratchBuffer unit tests ───────────────────────────────────────
+
+    #[test]
+    fn scratch_new_is_zeroed() {
+        let s = ScratchBuffer::new();
+        assert!(s.read().iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn scratch_seed_from_work() {
+        let mut work = WorkData::new();
+        work.feed(&42u32);
+        let mut s = ScratchBuffer::new();
+        s.seed_from(&work);
+        assert!(s.read().iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn scratch_seed_from_empty_stays_zero() {
+        let work = WorkData::new();
+        let mut s = ScratchBuffer::new();
+        s.seed_from(&work);
+        assert!(s.read().iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn scratch_absorb_changes_state() {
+        let mut s = ScratchBuffer::new();
+        s.absorb(&[0xFF; 32]);
+        assert!(s.read().iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn scratch_absorb_empty_is_noop() {
+        let mut s = ScratchBuffer::new();
+        s.absorb(&[]);
+        assert!(s.read().iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn scratch_blend_into_xors() {
+        let mut s = ScratchBuffer::new();
+        s.absorb(&[0xAB; 4]);
+        let mut buf = [0u8; 4];
+        s.blend_into(&mut buf);
+        assert!(buf.iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn scratch_different_absorbs_different_state() {
+        let mut s1 = ScratchBuffer::new();
+        s1.absorb(&[0xFF; 4]);
+        let mut s2 = ScratchBuffer::new();
+        s2.absorb(&[0xAA; 4]);
+        assert_ne!(s1.read(), s2.read());
+    }
+
+    #[test]
+    fn scratch_chain_with_transform_order_dependent() {
+        let mut s1 = ScratchBuffer::new();
+        s1.absorb(&[1, 2, 3]);
+        let mut buf = [0u8; 8];
+        s1.blend_into(&mut buf);
+        for b in buf.iter_mut() { *b = b.wrapping_mul(7).wrapping_add(3); }
+        s1.absorb(&buf);
+
+        let mut s2 = ScratchBuffer::new();
+        s2.absorb(&[4, 5, 6]);
+        let mut buf = [0u8; 8];
+        s2.blend_into(&mut buf);
+        for b in buf.iter_mut() { *b = b.wrapping_mul(7).wrapping_add(3); }
+        s2.absorb(&buf);
+
+        assert_ne!(s1.read(), s2.read(), "different initial data + transform = different chain");
+    }
+
+    #[test]
+    fn scratch_chain_accumulates() {
+        let mut s = ScratchBuffer::new();
+        let state_0 = *s.read();
+        s.absorb(&[0xFF]);
+        let state_1 = *s.read();
+        s.absorb(&[0xAA]);
+        let state_2 = *s.read();
+        assert_ne!(state_0, state_1);
+        assert_ne!(state_1, state_2);
     }
 
     // ── Registry completeness ──────────────────────────────────────────
@@ -122,8 +254,14 @@ mod tests {
     }
 
     #[test]
+    fn registry_com_count() {
+        let n = all_tasks().iter().filter(|t| t.category == Categories::COM).count();
+        assert_eq!(n, 8, "expected 8 COM tasks");
+    }
+
+    #[test]
     fn registry_total() {
-        assert_eq!(all_tasks().len(), 76, "expected 76 total tasks");
+        assert_eq!(all_tasks().len(), 84, "expected 84 total tasks");
     }
 
     #[test]
@@ -137,8 +275,6 @@ mod tests {
     }
 
     // ── Every task runs with every work-data shape ─────────────────────
-    // These call every registered task function pointer directly, catching
-    // panics from index-out-of-bounds, overflow, or allocation failures.
 
     #[test]
     fn every_task_empty_work() {
@@ -197,8 +333,6 @@ mod tests {
         );
     }
 
-    // ── Parameter edge cases × work data ───────────────────────────────
-
     #[test]
     fn every_task_zero_params_empty_work() {
         run_every_task(
@@ -238,8 +372,6 @@ mod tests {
             &make_work(&vec![0xCD; 8192]),
         );
     }
-
-    // ── Max-value work data that pushes derive_usize / blend_seed ──────
 
     #[test]
     fn every_task_max_seed_work() {

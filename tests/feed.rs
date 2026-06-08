@@ -164,6 +164,11 @@ fn feed_crypto_no_panic() {
 }
 
 #[test]
+fn feed_com_no_panic() {
+    sample_feed().allow(Categories::COM).run();
+}
+
+#[test]
 fn feed_all_categories_no_panic() {
     sample_feed().deny(Categories::NETWORK).run();
 }

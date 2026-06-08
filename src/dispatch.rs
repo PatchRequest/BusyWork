@@ -1,12 +1,15 @@
 use crate::categories::Categories;
 use crate::intensity::Intensity;
 use crate::jitter;
-use crate::tasks::{self, TaskParams};
+use crate::tasks::{self, ScratchBuffer, TaskParams};
 use crate::workdata::WorkData;
 use rand::seq::SliceRandom;
 
 pub fn execute(intensity: Intensity, effective: Categories, jitter_enabled: bool, work_data: &WorkData) {
     let mut rng = rand::thread_rng();
+    let mut scratch = ScratchBuffer::new();
+    scratch.seed_from(work_data);
+
     let all = tasks::all_tasks();
     let eligible: Vec<_> = all
         .iter()
@@ -43,6 +46,6 @@ pub fn execute(intensity: Intensity, effective: Categories, jitter_enabled: bool
                 base.call_depth
             },
         };
-        (task.func)(&params, &mut rng, work_data);
+        (task.func)(&params, &mut rng, work_data, &mut scratch);
     }
 }

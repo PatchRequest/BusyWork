@@ -51,4 +51,10 @@ fn available_returns_all_compiled() {
     assert!(avail.contains(Categories::COMPUTE));
     assert!(avail.contains(Categories::MEMORY));
     assert!(avail.contains(Categories::FILESYSTEM));
+    assert!(avail.contains(Categories::COM));
+}
+
+#[test]
+fn high_com_only() {
+    busywork_with(Intensity::High, Categories::COM);
 }

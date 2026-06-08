@@ -1,5 +1,5 @@
 use crate::categories::Categories;
-use crate::tasks::{TaskDescriptor, TaskParams};
+use crate::tasks::{ScratchBuffer, TaskDescriptor, TaskParams};
 use crate::workdata::WorkData;
 use rand::rngs::ThreadRng;
 use rand::RngCore;
@@ -46,7 +46,12 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-fn bcrypt_gen_random(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData) {
+fn bcrypt_gen_random(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let size = params.buffer_size.min(65536);
     let mut buffer = vec![0u8; size];
     for _ in 0..params.iterations.min(100) {
@@ -58,15 +63,23 @@ fn bcrypt_gen_random(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData)
             );
         }
         work.blend_into(&mut buffer);
+        scratch.blend_into(&mut buffer);
         black_box(&buffer);
     }
+    scratch.absorb(&buffer[..buffer.len().min(256)]);
 }
 
-fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
+fn bcrypt_hash(
+    params: &TaskParams,
+    rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
     work.blend_into(&mut data);
+    scratch.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -80,6 +93,8 @@ fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             return;
         }
 
+        let mut output = vec![0u8; 32];
+
         for _ in 0..params.iterations.min(100) {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
@@ -88,23 +103,28 @@ fn bcrypt_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             }
 
             let _ = BCryptHashData(hash_handle, &data, 0);
-
-            let mut output = vec![0u8; 32];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
             let _ = BCryptDestroyHash(hash_handle);
         }
 
+        scratch.absorb(&output);
         let _ = BCryptCloseAlgorithmProvider(alg, 0);
     }
 }
 
-fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
+fn bcrypt_sha512(
+    params: &TaskParams,
+    rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
     work.blend_into(&mut data);
+    scratch.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -118,6 +138,8 @@ fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             return;
         }
 
+        let mut output = vec![0u8; 64];
+
         for _ in 0..params.iterations.min(100) {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
@@ -126,23 +148,28 @@ fn bcrypt_sha512(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             }
 
             let _ = BCryptHashData(hash_handle, &data, 0);
-
-            let mut output = vec![0u8; 64];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
             let _ = BCryptDestroyHash(hash_handle);
         }
 
+        scratch.absorb(&output);
         let _ = BCryptCloseAlgorithmProvider(alg, 0);
     }
 }
 
-fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
+fn bcrypt_md5_hash(
+    params: &TaskParams,
+    rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
     work.blend_into(&mut data);
+    scratch.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -156,6 +183,8 @@ fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             return;
         }
 
+        let mut output = vec![0u8; 16];
+
         for _ in 0..params.iterations.min(100) {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
@@ -164,23 +193,28 @@ fn bcrypt_md5_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             }
 
             let _ = BCryptHashData(hash_handle, &data, 0);
-
-            let mut output = vec![0u8; 16];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
             let _ = BCryptDestroyHash(hash_handle);
         }
 
+        scratch.absorb(&output);
         let _ = BCryptCloseAlgorithmProvider(alg, 0);
     }
 }
 
-fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
+fn bcrypt_sha1_hash(
+    params: &TaskParams,
+    rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let data_size = params.buffer_size.min(65536);
     let mut data = vec![0u8; data_size];
     rng.fill_bytes(&mut data);
     work.blend_into(&mut data);
+    scratch.blend_into(&mut data);
 
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
@@ -194,6 +228,8 @@ fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             return;
         }
 
+        let mut output = vec![0u8; 20];
+
         for _ in 0..params.iterations.min(100) {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
@@ -202,23 +238,28 @@ fn bcrypt_sha1_hash(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
             }
 
             let _ = BCryptHashData(hash_handle, &data, 0);
-
-            let mut output = vec![0u8; 20];
             let _ = BCryptFinishHash(hash_handle, &mut output, 0);
 
             black_box(&output);
             let _ = BCryptDestroyHash(hash_handle);
         }
 
+        scratch.absorb(&output);
         let _ = BCryptCloseAlgorithmProvider(alg, 0);
     }
 }
 
-fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData) {
+fn bcrypt_aes_encrypt(
+    params: &TaskParams,
+    rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let plaintext_size = params.buffer_size.min(4096);
     let mut plaintext = vec![0u8; plaintext_size];
     rng.fill_bytes(&mut plaintext);
     work.blend_into(&mut plaintext);
+    scratch.blend_into(&mut plaintext);
 
     let mut key_bytes = [0u8; 32];
     rng.fill_bytes(&mut key_bytes);
@@ -235,6 +276,8 @@ fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData)
             return;
         }
 
+        let mut output = vec![0u8; plaintext_size + 16];
+
         for _ in 0..params.call_depth.min(50) {
             let mut key_handle = BCRYPT_KEY_HANDLE::default();
             let status = BCryptGenerateSymmetricKey(
@@ -248,7 +291,6 @@ fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData)
                 continue;
             }
 
-            let mut output = vec![0u8; plaintext_size + 16];
             let mut bytes_written: u32 = 0;
 
             let _ = BCryptEncrypt(
@@ -267,11 +309,17 @@ fn bcrypt_aes_encrypt(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData)
             let _ = BCryptDestroyKey(key_handle);
         }
 
+        scratch.absorb(&output[..output.len().min(256)]);
         let _ = BCryptCloseAlgorithmProvider(alg, 0);
     }
 }
 
-fn bcrypt_rng_algorithms(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData) {
+fn bcrypt_rng_algorithms(
+    params: &TaskParams,
+    _rng: &mut ThreadRng,
+    work: &WorkData,
+    scratch: &mut ScratchBuffer,
+) {
     let alg_ids = [
         windows::core::w!("RNG"),
         windows::core::w!("FIPS186DSARNG"),
@@ -297,10 +345,13 @@ fn bcrypt_rng_algorithms(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkD
             for _ in 0..params.iterations.min(50) {
                 let _ = BCryptGenRandom(alg, &mut buffer, BCRYPTGENRANDOM_FLAGS(0));
                 work.blend_into(&mut buffer);
+                scratch.blend_into(&mut buffer);
                 black_box(&buffer);
             }
 
             let _ = BCryptCloseAlgorithmProvider(alg, 0);
         }
     }
+
+    scratch.absorb(&buffer[..buffer.len().min(256)]);
 }
