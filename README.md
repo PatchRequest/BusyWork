@@ -90,6 +90,12 @@ BusyWork::new(Intensity::Low)
     .run();
 ```
 
+### Inter-Task Data Chaining
+
+Every `run()` call maintains a **256-byte scratch buffer** that flows through all tasks sequentially. Each task reads from the scratch buffer (blending it into its computation) and writes its results back. Task N's SHA-256 output becomes part of task N+1's sort input, which feeds task N+2's compression.
+
+This creates a **data-dependency chain** across the entire execution — an analyzer cannot isolate individual tasks as independent noise blocks, because each task's behavior genuinely depends on what came before it.
+
 ### Loop example
 
 ```rust
@@ -112,7 +118,7 @@ No timers — just work volume:
 
 Jitter (on by default) randomizes all parameters by ±30%, so two consecutive calls at the same intensity produce different instruction traces.
 
-## Categories — 76 Tasks
+## Categories — 84 Tasks
 
 ### COMPUTE (14 tasks)
 SHA-256 hash chains, MD5 hash chains, prime sieve (Eratosthenes), matrix multiplication, array sorting, deflate compress/decompress, Fibonacci sequence, XOR cipher rounds, Collatz conjecture, string operations, bubble sort, bitwise operations, pi approximation (Leibniz), permutation generation (Heap's algorithm).
@@ -134,6 +140,9 @@ DNS lookups (24 hosts), HTTP GET (11 endpoints), NTP queries (7 servers), HTTP H
 
 ### CRYPTO (7 tasks)
 BCryptGenRandom (system CSPRNG), BCrypt SHA-256 hashing, BCrypt SHA-512, BCrypt MD5, BCrypt SHA-1, AES-256 symmetric encrypt, RNG algorithm providers (RNG, FIPS186DSARNG, DUALECRNG).
+
+### COM (8 tasks)
+WMI queries via COM automation: Win32_Process (process enumeration), Win32_OperatingSystem (OS info), Win32_ComputerSystem (computer/domain info), Win32_NetworkAdapterConfiguration (network adapters), Win32_LogicalDisk (disk info), Win32_Service (services), Win32_BIOS (BIOS info), Win32_Processor (CPU info). All **read-only** WQL SELECT queries.
 
 ## Benchmarks
 
@@ -183,6 +192,7 @@ busywork = { version = "0.1", default-features = false, features = ["cat-compute
 | `cat-winapi`     | windows            | Win32 API calls              |
 | `cat-network`    | —                  | DNS, HTTP, NTP               |
 | `cat-crypto`     | windows            | Windows CNG (BCrypt) crypto  |
+| `cat-com`        | windows            | COM/WMI queries              |
 
 ## Anti-Detection Design
 
@@ -193,6 +203,7 @@ Every design decision optimizes for evasion:
 | **Random task selection per call** | Behavioral sequence matching — no two calls produce the same API call order |
 | **±30% jitter on all parameters** | Timing heuristics — iteration counts, buffer sizes, call depths all vary |
 | **Data flow integration via `.feed()`** | Data-flow analysis — busywork operates on the same variables as surrounding code, preventing isolation as "noise blocks" |
+| **Inter-task scratch buffer chaining** | Block isolation analysis — each task's output feeds the next task's input, creating a connected data-dependency graph across the entire run |
 | **Task registry rebuilt per call** | Static analysis — no stable global function pointer table to fingerprint |
 | **Function pointers, not trait objects** | Vtable signature detection — each task is a direct call to a unique address |
 | **`black_box` on all results** | Dead-code elimination — compiler can't optimize away the work |
@@ -200,6 +211,7 @@ Every design decision optimizes for evasion:
 | **Real syscalls across categories** | Syscall sequence analysis — mixes NtReadFile, NtQueryKey, NtDeviceIoControl, etc. |
 | **Read-only filesystem/registry ops** | Behavioral red flags — no writes, no creates, no deletes |
 | **Legitimate API call targets** | API monitoring — calls the same APIs that normal applications use |
+| **COM/WMI queries** | Process behavioral profiling — WMI queries are one of the most common Windows API patterns in legitimate software |
 
 ### What it looks like under analysis
 
@@ -210,38 +222,42 @@ Call 1: RegOpenKeyEx → RegEnumKeyEx × 3 → RegCloseKey → SHA256 × 200 →
 Call 2: EnumWindows → GetWindowText × 15 → GlobalMemoryStatusEx → sort(50KB)
 Call 3: connect(httpbin.org:80) → send(GET) → recv → BCryptGenRandom × 8
 Call 4: FindFirstFile(*.dll) × 40 → GetVolumeInformation → memcpy(16KB) × 300
+Call 5: CoCreateInstance(WbemLocator) → ExecQuery(Win32_Process) → enumerate × 50
 ```
 
 No repeating pattern. Each call exercises different subsystems, different buffer sizes, different iteration counts. To an EDR, it looks like a normal application doing normal things.
 
-With `.feed()`, the data flowing through these operations comes from your actual program variables — hash chains process your session tokens, sorts operate on your counters, crypto operations encrypt your payloads. A taint-tracking analyzer following your variables will see them consumed by what appears to be legitimate processing.
+With `.feed()`, the data flowing through these operations comes from your actual program variables — hash chains process your session tokens, sorts operate on your counters, crypto operations encrypt your payloads. A taint-tracking analyzer following your variables will see them consumed by what appears to be legitimate processing. The scratch buffer chains these operations together so even cross-task data flow looks organic.
 
 ## Testing
 
-196 tests across 4 test suites:
+185 tests across 5 test suites, verified with full untruncated output:
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
 | `workdata::tests` | 52 | Every `FeedWork` type, `blend_into` XOR correctness, `blend_seed`/`derive_usize` determinism, clone independence, empty/zero edge cases |
-| `tasks::tests` | 18 | Every registered task function called directly with 10 work-data shapes × parameter extremes (zero, min, large). Registry completeness (76 tasks, no duplicates) |
+| `tasks::tests` | 24 | ScratchBuffer mechanics (seed, absorb, chain accumulation). Every registered task function called directly with 14 work-data shapes × parameter extremes (zero, min, large) — 1,176 task invocations. Registry completeness (84 tasks across 8 categories, no duplicates) |
 | `tasks::compute::tests` | 19 | Mirror tests proving work data changes computation: hash inputs differ, fibonacci starting values shift, sieve limits get bias, cipher keys incorporate fed data, distinct inputs produce distinct seeds |
 | `tasks::memory::tests` | 9 | Mirror tests proving work data flows into memory tasks: buffers modified, patterns XOR'd, ring buffers seeded, reversibility verified |
-| `tests/smoke.rs` | 9 | Basic API smoke tests, category filtering, jitter toggle |
+| — | — | — |
+| `tests/smoke.rs` | 10 | Basic API smoke tests, category filtering (including COM), jitter toggle |
 | `tests/bench.rs` | 4 | Intensity/category benchmarks, jitter variance measurement |
-| `tests/feed.rs` | 62 | Data isolation (15 types verified untouched after run), per-category with feed, intensity levels, edge cases (NaN, Unicode, 64KB), builder combinations, type coverage |
+| `tests/feed.rs` | 64 | Data isolation (15 types verified untouched after run), per-category with feed (all 8 categories), intensity levels, edge cases (NaN, Unicode, 64KB), builder combinations, type coverage |
 | `tests/robustness.rs` | 23 | Stress (500 rapid calls, 10k small feeds, 1MB feed), custom `FeedWork` impl, regression patterns (empty→real, alternating, max values) |
 
 ```
-cargo test --lib           # 101 unit tests
-cargo test --test feed     # 62 integration tests
-cargo test --test robustness  # 23 stress/regression tests
+cargo test --lib -- --test-threads=1              # 85 unit tests
+cargo test --test feed -- --test-threads=1        # 64 integration tests
+cargo test --test robustness -- --test-threads=1  # 23 stress/regression tests
+cargo test --test smoke -- --test-threads=1       # 10 smoke tests
+cargo test --test bench -- --test-threads=1       # 4 benchmark tests
 ```
 
 ## Stats
 
 ```
-76 tasks across 7 categories
-31 tasks actively consume fed work data (COMPUTE, MEMORY, CRYPTO)
-196 tests across unit, integration, stress, and mirror test suites
+84 tasks across 8 categories
+All 84 tasks actively consume fed work data and participate in scratch buffer chaining
+185 tests across unit, integration, stress, mirror, and benchmark suites
 0 time objects in the library binary
 ```
