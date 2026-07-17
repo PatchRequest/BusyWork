@@ -65,7 +65,7 @@ unsafe fn enum_subkeys(root: HKEY, subkey_path: &[u16], max_keys: usize) {
     let result = RegOpenKeyExW(
         root,
         windows::core::PCWSTR(subkey_path.as_ptr()),
-        0,
+        Some(0),
         KEY_READ,
         &mut hkey,
     );
@@ -79,10 +79,10 @@ unsafe fn enum_subkeys(root: HKEY, subkey_path: &[u16], max_keys: usize) {
         let result = RegEnumKeyExW(
             hkey,
             i,
-            windows::core::PWSTR(name_buf.as_mut_ptr()),
+            Some(windows::core::PWSTR(name_buf.as_mut_ptr())),
             &mut name_len,
             None,
-            windows::core::PWSTR::null(),
+            None,
             None,
             None,
         );
@@ -122,7 +122,7 @@ unsafe fn enum_values(hkey: HKEY, max_values: usize) {
         let result = RegEnumValueW(
             hkey,
             i,
-            windows::core::PWSTR(name_buf.as_mut_ptr()),
+            Some(windows::core::PWSTR(name_buf.as_mut_ptr())),
             &mut name_len,
             None,
             Some(&mut data_type),
@@ -172,7 +172,7 @@ fn read_system_info_reg(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkDa
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(PATH.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -232,7 +232,7 @@ fn read_timezone_info(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(PATH.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -273,7 +273,7 @@ fn read_environment_vars(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkD
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(PATH.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -331,7 +331,7 @@ fn read_network_config(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkDat
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(PATH.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -373,7 +373,7 @@ fn read_hardware_info(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(PATH.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -418,7 +418,7 @@ fn read_font_list(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, sc
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(PATH.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -461,7 +461,7 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkD
         let result = RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(PATH_HKLM.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -474,7 +474,7 @@ fn read_startup_programs(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkD
         let result = RegOpenKeyExW(
             HKEY_CURRENT_USER,
             windows::core::PCWSTR(PATH_HKCU.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         );
@@ -495,10 +495,10 @@ fn read_file_associations(params: &TaskParams, _rng: &mut ThreadRng, work: &Work
             let result = RegEnumKeyExW(
                 HKEY_CLASSES_ROOT,
                 i,
-                windows::core::PWSTR(name_buf.as_mut_ptr()),
+                Some(windows::core::PWSTR(name_buf.as_mut_ptr())),
                 &mut name_len,
                 None,
-                windows::core::PWSTR::null(),
+                None,
                 None,
                 None,
             );

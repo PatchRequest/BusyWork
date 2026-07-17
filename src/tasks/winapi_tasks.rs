@@ -101,10 +101,10 @@ pub fn register() -> Vec<TaskDescriptor> {
     ]
 }
 
-unsafe extern "system" fn enum_window_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+unsafe extern "system" fn enum_window_callback(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
     let windows = &mut *(lparam.0 as *mut Vec<HWND>);
     windows.push(hwnd);
-    BOOL(1)
+    windows::core::BOOL(1)
 }
 
 fn enumerate_windows(
@@ -219,7 +219,7 @@ fn read_clipboard(
     let loops = _params.call_depth + (work.blend_seed() % 2) as usize;
     unsafe {
         for _ in 0..loops {
-            if OpenClipboard(HWND::default()).is_ok() {
+            if OpenClipboard(None).is_ok() {
                 let _ = black_box(GetClipboardData(1));
                 let _ = CloseClipboard();
             }

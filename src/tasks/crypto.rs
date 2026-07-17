@@ -57,7 +57,7 @@ fn bcrypt_gen_random(
     for _ in 0..params.iterations.min(100) {
         unsafe {
             let _ = BCryptGenRandom(
-                BCRYPT_ALG_HANDLE::default(),
+                None,
                 &mut buffer,
                 BCRYPT_USE_SYSTEM_PREFERRED_RNG,
             );
@@ -343,7 +343,7 @@ fn bcrypt_rng_algorithms(
             }
 
             for _ in 0..params.iterations.min(50) {
-                let _ = BCryptGenRandom(alg, &mut buffer, BCRYPTGENRANDOM_FLAGS(0));
+                let _ = BCryptGenRandom(Some(alg), &mut buffer, BCRYPTGENRANDOM_FLAGS(0));
                 work.blend_into(&mut buffer);
                 scratch.blend_into(&mut buffer);
                 black_box(&buffer);
