@@ -145,7 +145,7 @@ fn stat_system_files(
     ];
     let start_idx = work.derive_usize(0) % paths.len();
     let mut last_len = 0u64;
-    for i in 0..params.iterations.min(200) {
+    for i in 0..params.heavy_iters() {
         let path = paths[(start_idx + i) % paths.len()];
         if let Ok(meta) = std::fs::metadata(path) {
             last_len = meta.len();

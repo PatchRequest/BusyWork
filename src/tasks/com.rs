@@ -94,7 +94,7 @@ unsafe fn wmi_query(query: &str, max_results: usize, scratch: &mut ScratchBuffer
 }
 
 fn wmi_processes(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
-    let max_results = params.iterations.min(200).saturating_add(work.derive_usize(0) % 8);
+    let max_results = params.io_rounds().saturating_add(work.derive_usize(0) % 8);
     unsafe { wmi_query("SELECT ProcessId, Name FROM Win32_Process", max_results, scratch); }
 }
 
@@ -109,17 +109,17 @@ fn wmi_computer_system(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkDat
 }
 
 fn wmi_network_adapters(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
-    let max_results = params.iterations.min(50).saturating_add(work.derive_usize(1) % 4);
+    let max_results = params.io_rounds().saturating_add(work.derive_usize(1) % 4);
     unsafe { wmi_query("SELECT Description, MACAddress FROM Win32_NetworkAdapterConfiguration", max_results, scratch); }
 }
 
 fn wmi_logical_disks(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
-    let max_results = params.iterations.min(30).saturating_add(work.derive_usize(0) % 4);
+    let max_results = params.io_rounds().saturating_add(work.derive_usize(0) % 4);
     unsafe { wmi_query("SELECT DeviceID, Size, FreeSpace FROM Win32_LogicalDisk", max_results, scratch); }
 }
 
 fn wmi_services(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch: &mut ScratchBuffer) {
-    let max_results = params.iterations.min(200).saturating_add(work.derive_usize(0) % 8);
+    let max_results = params.io_rounds().saturating_add(work.derive_usize(0) % 8);
     unsafe { wmi_query("SELECT Name, State, StartMode FROM Win32_Service", max_results, scratch); }
 }
 

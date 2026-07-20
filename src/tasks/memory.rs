@@ -67,7 +67,7 @@ fn alloc_touch_free(
     scratch: &mut ScratchBuffer,
 ) {
     let size = params.buffer_size.min(1_048_576);
-    for _ in 0..params.iterations.min(100) {
+    for _ in 0..params.heavy_iters() {
         let mut buf = vec![0u8; size];
         for offset in (0..size).step_by(4096) {
             buf[offset] = rng.gen();
@@ -91,7 +91,7 @@ fn memcpy_chain(
     rng.fill_bytes(&mut src);
     work.blend_into(&mut src);
     scratch.blend_into(&mut src);
-    for _ in 0..params.iterations.min(1000) {
+    for _ in 0..params.cpu_iters() {
         dst.copy_from_slice(&src);
         std::mem::swap(&mut src, &mut dst);
     }
@@ -134,7 +134,7 @@ fn pattern_fill_verify(
     let mut buf = vec![0u8; size];
     let wb = work.as_bytes();
     let scratch_data = *scratch.read();
-    for round in 0..params.iterations.min(100) {
+    for round in 0..params.heavy_iters() {
         let base_pattern: u8 = rng.gen();
         let mut pattern = if !wb.is_empty() {
             base_pattern ^ wb[round % wb.len()]
@@ -155,7 +155,7 @@ fn heap_fragmentation(
     work: &WorkData,
     scratch: &mut ScratchBuffer,
 ) {
-    let count = params.iterations.min(500);
+    let count = params.heavy_iters();
     let mut buffers: Vec<Option<Vec<u8>>> = Vec::with_capacity(count);
 
     for _ in 0..count {
@@ -304,7 +304,7 @@ fn scatter_gather(
     work.blend_into(&mut buffer);
     scratch.blend_into(&mut buffer);
 
-    for _ in 0..params.iterations.min(100) {
+    for _ in 0..params.heavy_iters() {
         let indices: Vec<usize> = (0..index_count).map(|_| rng.gen_range(0..size)).collect();
 
         let gathered: Vec<u8> = indices.iter().map(|&idx| buffer[idx]).collect();

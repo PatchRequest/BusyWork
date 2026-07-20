@@ -107,14 +107,24 @@ loop {
 
 ## Intensity Levels
 
-No timers — just work volume:
+No timers — just work volume. Levels are an order-of-magnitude ladder so
+Medium is clearly heavier than Low, High clearly heavier than Medium, etc.
 
 | Level    | Tasks/call | Iterations | Buffer size | Call depth |
 |----------|------------|------------|-------------|------------|
-| `Low`    | 2          | 50         | 1 KB        | 2          |
-| `Medium` | 5          | 500        | 16 KB       | 4          |
-| `High`   | 10         | 5,000      | 256 KB      | 8          |
-| `Ultra`  | 20         | 50,000     | 1 MB        | 16         |
+| `Low`    | 5          | 5,000      | 16 KB       | 3          |
+| `Medium` | 10         | 40,000     | 128 KB      | 8          |
+| `High`   | 14         | 120,000    | 256 KB      | 12         |
+| `Ultra`  | 20         | 300,000    | 1 MB        | 16         |
+
+Tasks use intensity-aware helpers (`cpu_iters` / `heavy_iters` / `io_rounds`)
+instead of hard `.min(N)` caps that used to collapse Medium/High/Ultra to the
+same work volume.
+
+Approximate pure-compute wall time on a modern desktop: Low ~0.2–1s,
+Medium ~2–8s, High ~10–30s, Ultra ~45–120s. Windows I/O categories stretch
+this. Agents that run three bursts per idle (e.g. Kassandra) roughly triple
+the interval.
 
 Jitter (on by default) randomizes all parameters by ±30%, so two consecutive calls at the same intensity produce different instruction traces.
 

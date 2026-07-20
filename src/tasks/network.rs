@@ -94,7 +94,7 @@ fn dns_lookups(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scrat
         "aws.amazon.com:80",
     ];
     let start_idx = work.derive_usize(0) % hosts.len();
-    for i in 0..params.iterations.min(50) {
+    for i in 0..params.io_rounds() {
         let host = hosts[(start_idx + i) % hosts.len()];
         let _ = host.to_socket_addrs().map(|addrs| {
             for addr in addrs {
@@ -124,7 +124,7 @@ fn http_get(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch:
         ("api.myip.com", 80, "/"),
     ];
     let start_idx = work.derive_usize(0) % targets.len();
-    for i in 0..params.call_depth.min(5) {
+    for i in 0..params.call_depth.max(1) {
         let &(host, port, path) = &targets[(start_idx + i) % targets.len()];
         let addr = format!("{}:{}", host, port);
         let stream = match TcpStream::connect(&*addr) {
@@ -160,7 +160,7 @@ fn ntp_query(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, scratch
         "ntp.ubuntu.com:123",
     ];
     let start_idx = work.derive_usize(0) % servers.len();
-    for i in 0..params.call_depth.min(5) {
+    for i in 0..params.call_depth.max(1) {
         let server = servers[(start_idx + i) % servers.len()];
         let socket = match UdpSocket::bind("0.0.0.0:0") {
             Ok(s) => s,
@@ -193,7 +193,7 @@ fn http_head_request(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData,
         ("api.ipify.org", 80, "/"),
     ];
     let start_idx = work.derive_usize(0) % targets.len();
-    for i in 0..params.call_depth.min(5) {
+    for i in 0..params.call_depth.max(1) {
         let &(host, port, path) = &targets[(start_idx + i) % targets.len()];
         let addr = format!("{}:{}", host, port);
         let stream = match TcpStream::connect(&*addr) {
@@ -230,7 +230,7 @@ fn tcp_connect_probe(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData,
         ("8.8.8.8", 53),
     ];
     let start_idx = work.derive_usize(0) % targets.len();
-    for i in 0..params.iterations.min(10) {
+    for i in 0..params.io_rounds() {
         let &(host, port) = &targets[(start_idx + i) % targets.len()];
         let addr = format!("{}:{}", host, port);
         if let Ok(stream) = TcpStream::connect(&*addr) {
@@ -261,7 +261,7 @@ fn dns_varied_ports(params: &TaskParams, _rng: &mut ThreadRng, work: &WorkData, 
         "example.net:8080",
     ];
     let start_idx = work.derive_usize(0) % hosts.len();
-    for i in 0..params.iterations.min(40) {
+    for i in 0..params.io_rounds() {
         let host = hosts[(start_idx + i) % hosts.len()];
         let _ = host.to_socket_addrs().map(|addrs| {
             for addr in addrs {
@@ -293,7 +293,7 @@ fn http_post_discard(params: &TaskParams, rng: &mut ThreadRng, work: &WorkData, 
     let body_hex: String = body.iter().map(|b| format!("{:02x}", b)).collect();
 
     let start_idx = work.derive_usize(0) % targets.len();
-    for i in 0..params.call_depth.min(5) {
+    for i in 0..params.call_depth.max(1) {
         let &(host, port, path, method) = &targets[(start_idx + i) % targets.len()];
         let addr = format!("{}:{}", host, port);
         let stream = match TcpStream::connect(&*addr) {

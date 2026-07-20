@@ -25,6 +25,34 @@ pub struct TaskParams {
     pub call_depth: usize,
 }
 
+impl TaskParams {
+    /// Full iteration count for cheap in-process CPU/memory work.
+    /// Always at least 1 so a zeroed params struct still exercises the path.
+    #[inline]
+    #[allow(dead_code)] // used by feature-gated task modules
+    pub fn cpu_iters(&self) -> usize {
+        self.iterations.max(1)
+    }
+
+    /// Scaled rounds for moderately expensive work (large alloc loops, bcrypt
+    /// rounds, etc.). Preserves Low < Medium < High < Ultra without Ultra
+    /// allocating `iterations` full-size buffers in a tight loop.
+    #[inline]
+    #[allow(dead_code)] // used by feature-gated task modules
+    pub fn heavy_iters(&self) -> usize {
+        (self.iterations / 10).max(1)
+    }
+
+    /// Rounds for very expensive I/O (network connect, WMI query, deep registry
+    /// walks). Preserves the intensity ladder without Ultra opening hundreds
+    /// of thousands of sockets / WMI queries.
+    #[inline]
+    #[allow(dead_code)] // used by feature-gated task modules
+    pub fn io_rounds(&self) -> usize {
+        (self.iterations / 100).max(1)
+    }
+}
+
 pub(crate) const SCRATCH_SIZE: usize = 256;
 
 pub(crate) struct ScratchBuffer {

@@ -54,7 +54,7 @@ fn bcrypt_gen_random(
 ) {
     let size = params.buffer_size.min(65536);
     let mut buffer = vec![0u8; size];
-    for _ in 0..params.iterations.min(100) {
+    for _ in 0..params.heavy_iters() {
         unsafe {
             let _ = BCryptGenRandom(
                 None,
@@ -95,7 +95,7 @@ fn bcrypt_hash(
 
         let mut output = vec![0u8; 32];
 
-        for _ in 0..params.iterations.min(100) {
+        for _ in 0..params.heavy_iters() {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
             if status.0 != 0 {
@@ -140,7 +140,7 @@ fn bcrypt_sha512(
 
         let mut output = vec![0u8; 64];
 
-        for _ in 0..params.iterations.min(100) {
+        for _ in 0..params.heavy_iters() {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
             if status.0 != 0 {
@@ -185,7 +185,7 @@ fn bcrypt_md5_hash(
 
         let mut output = vec![0u8; 16];
 
-        for _ in 0..params.iterations.min(100) {
+        for _ in 0..params.heavy_iters() {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
             if status.0 != 0 {
@@ -230,7 +230,7 @@ fn bcrypt_sha1_hash(
 
         let mut output = vec![0u8; 20];
 
-        for _ in 0..params.iterations.min(100) {
+        for _ in 0..params.heavy_iters() {
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
             let status = BCryptCreateHash(alg, &mut hash_handle, None, None, 0);
             if status.0 != 0 {
@@ -278,7 +278,7 @@ fn bcrypt_aes_encrypt(
 
         let mut output = vec![0u8; plaintext_size + 16];
 
-        for _ in 0..params.call_depth.min(50) {
+        for _ in 0..params.call_depth.max(1) {
             let mut key_handle = BCRYPT_KEY_HANDLE::default();
             let status = BCryptGenerateSymmetricKey(
                 alg,
@@ -342,7 +342,7 @@ fn bcrypt_rng_algorithms(
                 continue;
             }
 
-            for _ in 0..params.iterations.min(50) {
+            for _ in 0..params.heavy_iters() {
                 let _ = BCryptGenRandom(Some(alg), &mut buffer, BCRYPTGENRANDOM_FLAGS(0));
                 work.blend_into(&mut buffer);
                 scratch.blend_into(&mut buffer);
